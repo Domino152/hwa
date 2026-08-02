@@ -2,8 +2,8 @@ import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   makeCacheableSignalKeyStore,
-  isJidNewsletter,
   Browsers,
+  type WAMessage,
   type WAMessageContent,
   type WAMessageKey,
   type WASocket,
@@ -14,9 +14,9 @@ import NodeCache from '@cacheable/node-cache';
 import { config } from '../../config/index.js';
 import { emitToAll } from '../../sockets/index.js';
 import logger from '../../shared/utils/logger.js';
-import { OutgoingMessage } from '../../database/models/OutgoingMessage.js';
-import { AppError } from '../../shared/utils/errors.js';
 import { extractPhoneFromJid } from './utils/phone.js';
+import { InboxService } from './inbox.service.js';
+import { Conversation } from '../../database/models/Conversation.js';
 import type { WhatsAppServiceStatus } from '../../shared/types/whatsapp.js';
 import qrCodeTerminal from 'qrcode-terminal';
 
@@ -26,7 +26,7 @@ const QR_TIMEOUT_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 
-export class WhatsAppService {
+export class ChatService {
   private sock: WASocket | null = null;
   private state: ConnectionStateStr = 'close';
   private qr: string | null = null;
@@ -36,10 +36,15 @@ export class WhatsAppService {
   private readonly logger: pino.Logger;
   private readonly sessionDir: string;
   private readonly msgRetryCounterCache = new NodeCache();
+  private inbox: InboxService | null = null;
 
   constructor(sessionDir?: string) {
     this.sessionDir = sessionDir ?? config.WA_SESSION_DIR;
     this.logger = logger.child({ module: 'whatsapp' });
+  }
+
+  setInboxService(inbox: InboxService): void {
+    this.inbox = inbox;
   }
 
   async initialize(): Promise<void> {
@@ -84,15 +89,11 @@ export class WhatsAppService {
     });
 
     this.sock.ev.on('messages.upsert', (upsert) => {
-      if (upsert.type === 'notify') {
-        for (const msg of upsert.messages) {
-          if (!msg.key.fromMe && !isJidNewsletter(msg.key?.remoteJid!)) {
-            this.logger.debug(
-              { from: msg.key.remoteJid, id: msg.key.id },
-              'Incoming message received',
-            );
-          }
-        }
+      if (upsert.type !== 'notify') return;
+      if (!this.inbox) return;
+
+      for (const msg of upsert.messages) {
+        void this.inbox.handleIncomingMessage(msg);
       }
     });
   }
@@ -136,8 +137,6 @@ export class WhatsAppService {
 
       this.logger.warn({ statusCode }, 'Connection closed');
 
-      // restartRequired (515) = WhatsApp forcibly disconnected after successful QR scan
-      // This is NORMAL — we must reconnect with the now-saved credentials
       if (statusCode === DisconnectReason.restartRequired) {
         this.logger.info('restartRequired received — reconnecting with saved credentials');
         this.reconnectAttempts = 0;
@@ -151,7 +150,6 @@ export class WhatsAppService {
         return;
       }
 
-      // loggedOut (401) = credentials invalid, need fresh QR
       if (statusCode === DisconnectReason.loggedOut) {
         this.state = 'close';
         this.qr = null;
@@ -166,7 +164,6 @@ export class WhatsAppService {
         return;
       }
 
-      // forbidden (403) = account banned/restricted
       if (statusCode === DisconnectReason.forbidden) {
         this.state = 'close';
         this.logger.fatal('Account forbidden — access denied by WhatsApp');
@@ -177,7 +174,6 @@ export class WhatsAppService {
         return;
       }
 
-      // All other close reasons = attempt reconnect
       if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         this.reconnectAttempts++;
         const delay = Math.min(
@@ -220,10 +216,11 @@ export class WhatsAppService {
     requestId: string,
   ): Promise<{ messageId: string }> {
     if (!this.sock || this.state !== 'open') {
-      throw new AppError('WhatsApp not connected', 503, 'WA_NOT_CONNECTED');
+      throw new Error('WhatsApp not connected');
     }
 
     const phone = extractPhoneFromJid(jid);
+    const timestamp = new Date();
 
     try {
       const result = await this.sock.sendMessage(jid, { text });
@@ -231,75 +228,64 @@ export class WhatsAppService {
 
       this.logger.info({ jid, messageId, requestId }, 'Message sent');
 
-      this.persistMessage({
-        jid,
-        phone,
-        message: text,
-        messageId,
-        status: 'sent',
-        requestId,
-      }).catch((err) => {
-        this.logger.error({ err, messageId }, 'Failed to persist outgoing message');
-      });
+      if (this.inbox) {
+        const conversation = await this.inbox.upsertConversationForOutgoing(
+          phone,
+          jid,
+          text,
+          timestamp,
+        );
+        await this.inbox.recordOutgoingMessage({
+          conversationId: conversation._id,
+          phone,
+          jid,
+          messageId,
+          content: text,
+          type: 'text',
+          status: 'sent',
+          timestamp,
+          requestId,
+        });
+      }
 
       return { messageId };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error({ jid, requestId, err }, 'Failed to send message');
 
-      this.persistMessage({
-        jid,
-        phone,
-        message: text,
-        messageId: 'unknown',
-        status: 'failed',
-        error: errorMsg,
-        requestId,
-      }).catch((persistErr) => {
-        this.logger.error(
-          { err: persistErr, messageId: 'unknown' },
-          'Failed to persist failed-message record',
-        );
-      });
+      if (this.inbox) {
+        try {
+          const conversation = await Conversation.findOne({ phone });
+          if (conversation) {
+            await this.inbox.recordOutgoingMessage({
+              conversationId: conversation._id,
+              phone,
+              jid,
+              messageId: 'unknown',
+              content: text,
+              type: 'text',
+              status: 'failed',
+              timestamp,
+              requestId,
+              error: errorMsg,
+            });
+          }
+        } catch (persistErr) {
+          this.logger.error(
+            { err: persistErr, messageId: 'unknown' },
+            'Failed to persist failed-message record',
+          );
+        }
+      }
 
       throw err;
     }
   }
 
-  async verifyOnWhatsApp(jid: string): Promise<boolean> {
-    if (!this.sock || this.state !== 'open') {
-      return false;
+  onIncomingMessage(msg: WAMessage): void {
+    if (this.inbox) {
+      void this.inbox.handleIncomingMessage(msg);
     }
-
-    try {
-      const results = await this.sock.onWhatsApp(jid);
-      const exists = Array.isArray(results) && results.length > 0 && results[0]?.exists === true;
-      this.logger.info({ jid, exists }, 'WhatsApp presence probe');
-      return exists;
-    } catch (err) {
-      this.logger.error({ jid, err }, 'Failed to verify number on WhatsApp');
-      return false;
-    }
-  }
-
-  private async persistMessage(data: {
-    jid: string;
-    phone: string;
-    message: string;
-    messageId: string;
-    status: 'sent' | 'failed';
-    error?: string;
-    requestId: string;
-  }): Promise<void> {
-    await OutgoingMessage.create({
-      jid: data.jid,
-      phone: data.phone,
-      message: data.message,
-      messageId: data.messageId,
-      status: data.status,
-      ...(data.error ? { error: data.error } : {}),
-      requestId: data.requestId,
-    });
   }
 
   async logout(): Promise<void> {

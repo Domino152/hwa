@@ -1,10 +1,9 @@
-import type { WhatsAppService } from './whatsapp.service.js';
 import { emitToAll } from '../../sockets/index.js';
 import logger from '../../shared/utils/logger.js';
 
 const waLogger = logger.child({ module: 'whatsapp-events' });
 
-export function setupWhatsAppEvents(_waService: WhatsAppService): void {
+export function setupWhatsAppEvents(): void {
   waLogger.info('WhatsApp event handlers registered');
 }
 

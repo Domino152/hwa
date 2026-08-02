@@ -37,3 +37,14 @@ export function emitToAll<K extends keyof ServerToClientEvents>(
     io.emit(event, ...args);
   }
 }
+
+export function emitIncomingMessage(
+  conversationId: string,
+  phone: string,
+  message: import('./socket.types.js').IncomingMessageData,
+  conversation: import('./socket.types.js').ConversationSummary,
+): void {
+  if (io) {
+    io.emit('incoming-message', { conversationId, phone, message, conversation });
+  }
+}

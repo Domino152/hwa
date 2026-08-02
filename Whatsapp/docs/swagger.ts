@@ -79,8 +79,9 @@ export {};
  *     summary: Send a WhatsApp message
  *     description: |
  *       Send a WhatsApp message to a phone number. Accepts any common phone format
- *       (`+91 7530063885`, `(234) 567-8901`, `917530063885`). The number is verified
- *       on WhatsApp before sending. Outgoing messages are persisted to MongoDB.
+ *       (`+91 7530063885`, `(234) 567-8901`, `917530063885`). The message is
+ *       stored in the conversation history. To send to a phone not yet on
+ *       WhatsApp, use the conversation auto-creation flow.
  *     requestBody:
  *       required: true
  *       content:
@@ -106,8 +107,6 @@ export {};
  *               $ref: '#/components/schemas/ApiResponse'
  *       400:
  *         description: Invalid request body (missing or malformed phone/message)
- *       404:
- *         description: Phone number is not registered on WhatsApp
  *       503:
  *         description: WhatsApp is not connected — scan the QR code first
  */
@@ -119,10 +118,73 @@ export {};
  *   post:
  *     tags: [WhatsApp]
  *     summary: Logout
- *     description: Disconnect WhatsApp session
+ *     description: Disconnect the WhatsApp session
  *     responses:
  *       200:
  *         description: Logged out
+ */
+export {};
+
+/**
+ * @openapi
+ * /whatsapp/conversations:
+ *   get:
+ *     tags: [WhatsApp]
+ *     summary: List conversations
+ *     description: Returns paginated list of conversations, sorted by latest message time
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Items per page
+ *     responses:
+ *       200:
+ *         description: List of conversations
+ */
+export {};
+
+/**
+ * @openapi
+ * /whatsapp/messages/{phone}:
+ *   get:
+ *     tags: [WhatsApp]
+ *     summary: Get chat history
+ *     description: Returns paginated messages for a phone number, sorted by timestamp desc
+ *     parameters:
+ *       - in: path
+ *         name: phone
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Phone number (digits, with or without JID suffix)
+ *         example: "917530063885"
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: Paginated messages
  */
 export {};
 

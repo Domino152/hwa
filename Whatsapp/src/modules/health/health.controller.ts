@@ -1,11 +1,11 @@
 import type { Request, Response } from 'express';
 import { sendSuccess } from '../../shared/utils/response.js';
 import { isDBConnected } from '../../database/index.js';
-import type { WhatsAppService } from '../whatsapp/whatsapp.service.js';
+import type { ChatService } from '../whatsapp/chat.service.js';
 import { ServiceUnavailableError } from '../../shared/utils/errors.js';
 
 export class HealthController {
-  constructor(private readonly waService?: WhatsAppService) {}
+  constructor(private readonly chatService?: ChatService) {}
 
   health = (_req: Request, res: Response): void => {
     sendSuccess(res, { status: 'ok', uptime: process.uptime() });
@@ -13,7 +13,7 @@ export class HealthController {
 
   ready = (_req: Request, res: Response): void => {
     const dbReady = isDBConnected();
-    const waReady = this.waService?.isConnected() ?? false;
+    const waReady = this.chatService?.isConnected() ?? false;
 
     if (!dbReady || !waReady) {
       throw new ServiceUnavailableError(

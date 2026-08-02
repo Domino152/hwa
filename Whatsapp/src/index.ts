@@ -2,7 +2,7 @@ import { config } from './config/index.js';
 import { SHUTDOWN_TIMEOUT_MS } from './config/constants.js';
 import { connectDB, disconnectDB } from './database/index.js';
 import { createHttpServer } from './server.js';
-import { waService } from './modules/whatsapp/whatsapp.routes.js';
+import { chatService } from './modules/whatsapp/whatsapp.routes.js';
 import logger from './shared/utils/logger.js';
 
 async function bootstrap(): Promise<void> {
@@ -14,7 +14,7 @@ async function bootstrap(): Promise<void> {
     const httpServer = createHttpServer();
 
     try {
-      await waService.initialize();
+      await chatService.initialize();
     } catch (err) {
       logger.warn({ err }, 'WhatsApp service failed to initialize — will retry');
     }
@@ -38,7 +38,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }, SHUTDOWN_TIMEOUT_MS);
 
   try {
-    await waService.logout();
+    await chatService.logout();
     await disconnectDB();
     logger.info('Graceful shutdown complete');
   } catch (err) {

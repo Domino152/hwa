@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { HealthController } from './health.controller.js';
-import type { WhatsAppService } from '../whatsapp/whatsapp.service.js';
+import type { ChatService } from '../whatsapp/chat.service.js';
 
-export function createHealthRoutes(waService?: WhatsAppService): Router {
+export function createHealthRoutes(chatService?: ChatService): Router {
   const router = Router();
-  const controller = new HealthController(waService);
+  const controller = new HealthController(chatService);
 
   router.get('/health', controller.health);
   router.get('/ready', controller.ready);

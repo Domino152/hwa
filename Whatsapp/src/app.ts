@@ -10,7 +10,7 @@ import { requestLogger } from './middleware/request-logger.js';
 import { rateLimiter } from './middleware/rate-limiter.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { notFoundHandler } from './middleware/not-found.js';
-import whatsappRoutes, { waService } from './modules/whatsapp/whatsapp.routes.js';
+import whatsappRoutes, { chatService } from './modules/whatsapp/whatsapp.routes.js';
 import { createHealthRoutes } from './modules/health/health.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import aiRoutes from './modules/ai/ai.routes.js';
@@ -46,7 +46,7 @@ export function createApp(): express.Express {
   const swaggerSpec = swaggerJsdoc(swaggerOptions);
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-  app.use(API_PREFIX, createHealthRoutes(waService));
+  app.use(API_PREFIX, createHealthRoutes(chatService));
   app.use(`${API_PREFIX}/whatsapp`, whatsappRoutes);
   app.use(`${API_PREFIX}/auth`, authRoutes);
   app.use(`${API_PREFIX}/ai`, aiRoutes);
