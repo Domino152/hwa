@@ -4,6 +4,7 @@ import { Message, type IMessage } from '../../database/models/Message.js';
 import { emitIncomingMessage } from '../../sockets/index.js';
 import { ChatService } from './chat.service.js';
 import { extractPhoneFromJid } from './utils/phone.js';
+import { chatbotService } from '../../chatbot/index.js';
 import {
   shouldProcessMessage,
   extractMessageContent,
@@ -132,7 +133,7 @@ export class InboxService {
         },
       );
 
-      await this.sendAutoReply(conversation, jid, phone);
+      await this.sendAutoReply(conversation, jid, phone, content);
     } catch (err) {
       autoReplyLogger.error({ err, msgKey: msg?.key }, 'Failed to handle incoming message');
     }
@@ -142,24 +143,25 @@ export class InboxService {
     conversation: IConversation,
     jid: string,
     phone: string,
+    userMessage: string,
   ): Promise<void> {
-    const autoReplyText =
-      'Hello 👋 Welcome to the College AI Assistant. How can I help you today?';
-
     try {
+      const chatbotResult = await chatbotService.processMessage(userMessage, { phone });
+      const replyText = chatbotResult.response;
+
       const requestId = `auto-reply-${Date.now()}`;
-      const result = await this.chatService.sendMessage(jid, autoReplyText, requestId);
+      const result = await this.chatService.sendMessage(jid, replyText, requestId);
 
       autoReplyLogger.info(
-        { phone, messageId: result.messageId },
-        'Auto-reply sent',
+        { phone, messageId: result.messageId, intent: chatbotResult.intent },
+        'Chatbot reply sent',
       );
 
       await Conversation.updateOne(
         { _id: conversation._id },
         {
           $set: {
-            lastMessage: autoReplyText,
+            lastMessage: replyText,
             lastMessageAt: new Date(),
             lastMessageDirection: 'outgoing',
           },
@@ -168,7 +170,7 @@ export class InboxService {
     } catch (err) {
       autoReplyLogger.error(
         { err, phone },
-        'Failed to send auto-reply (incoming message still saved)',
+        'Failed to send chatbot reply (incoming message still saved)',
       );
     }
   }
