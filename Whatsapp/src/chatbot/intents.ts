@@ -1,6 +1,7 @@
 export enum IntentName {
   Greeting = 'greeting',
   Help = 'help',
+  Login = 'login',
   Attendance = 'attendance',
   Fees = 'fees',
   Schedule = 'schedule',
@@ -19,6 +20,14 @@ export const SUBJECTS = [
   'Java',
   'Operating Systems',
 ] as const;
+
+/** Intents that require the user to be authenticated. */
+export const PRIVATE_INTENTS: IntentName[] = [
+  IntentName.Attendance,
+  IntentName.Fees,
+  IntentName.Schedule,
+  IntentName.Results,
+];
 
 /**
  * Ordered so domain-intents (attendance, fees, etc.) match before
@@ -89,6 +98,20 @@ export const INTENT_DEFINITIONS: IntentDefinition[] = [
     ],
   },
   {
+    name: IntentName.Login,
+    patterns: [
+      'sign in',
+      'signin',
+      'log in',
+      'login',
+      'authenticate',
+      'verify account',
+      'access account',
+      'i want to login',
+      'i want to sign in',
+    ],
+  },
+  {
     name: IntentName.Greeting,
     patterns: [
       'good morning',
@@ -113,8 +136,17 @@ export const INTENT_DEFINITIONS: IntentDefinition[] = [
   },
 ];
 
+export interface AuthenticatedUserInfo {
+  id: string;
+  fullName: string;
+  role: 'student' | 'parent';
+  studentId: string;
+}
+
 export interface ChatbotContext {
   phone: string;
+  isAuthenticated: boolean;
+  user?: AuthenticatedUserInfo;
 }
 
 export interface ChatbotResponse {

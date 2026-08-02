@@ -9,3 +9,5 @@ export const MONGOOSE_DEFAULT_OPTIONS = {
 } as const;
 
 export const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+export const PRIVATE_INTENTS = ['attendance', 'fees', 'schedule', 'results'] as const;

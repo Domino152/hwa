@@ -1,9 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { normalizeText } from '../../src/chatbot/helpers.js';
 import { classifyIntent } from '../../src/chatbot/intentClassifier.js';
 import { generateResponse } from '../../src/chatbot/responseGenerator.js';
 import { IntentName } from '../../src/chatbot/intents.js';
 import { ChatbotService } from '../../src/chatbot/chatbot.service.js';
+
+vi.mock('../../src/database/models/User.js', () => ({
+  User: {
+    findByPhone: vi.fn().mockResolvedValue(null),
+  },
+}));
+
+import { User } from '../../src/database/models/User.js';
 
 describe('Chatbot Helpers', () => {
   describe('normalizeText', () => {
@@ -155,6 +163,24 @@ describe('Intent Classifier', () => {
     });
   });
 
+  describe('Login intent', () => {
+    it('classifies "login"', () => {
+      expect(classifyIntent('login')).toBe(IntentName.Login);
+    });
+
+    it('classifies "sign in"', () => {
+      expect(classifyIntent('sign in')).toBe(IntentName.Login);
+    });
+
+    it('classifies "Login"', () => {
+      expect(classifyIntent('Login')).toBe(IntentName.Login);
+    });
+
+    it('classifies "i want to login"', () => {
+      expect(classifyIntent('i want to login')).toBe(IntentName.Login);
+    });
+  });
+
   describe('Help intent', () => {
     it('classifies "Help"', () => {
       expect(classifyIntent('Help')).toBe(IntentName.Help);
@@ -203,7 +229,7 @@ describe('Intent Classifier', () => {
 });
 
 describe('Response Generator', () => {
-  const ctx = { phone: '1234567890' };
+  const ctx = { phone: '1234567890', isAuthenticated: false };
 
   it('greeting response contains welcome and subject list', () => {
     const response = generateResponse(IntentName.Greeting, ctx);
@@ -213,33 +239,51 @@ describe('Response Generator', () => {
     expect(response).toContain('DBMS');
   });
 
-  it('attendance response contains attendance summary', () => {
+  it('attendance response returns login prompt when not authenticated', () => {
     const response = generateResponse(IntentName.Attendance, ctx);
+    expect(response).toContain('please login');
+    expect(response).toContain('Click here');
+  });
+
+  it('attendance response contains attendance summary when authenticated', () => {
+    const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
+    const response = generateResponse(IntentName.Attendance, authCtx);
     expect(response).toContain('Attendance Summary');
     expect(response).toContain('82%');
-    expect(response).toContain('DBMS');
   });
 
-  it('fees response contains fee details', () => {
+  it('fees response returns login prompt when not authenticated', () => {
     const response = generateResponse(IntentName.Fees, ctx);
+    expect(response).toContain('please login');
+  });
+
+  it('fees response contains fee details when authenticated', () => {
+    const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
+    const response = generateResponse(IntentName.Fees, authCtx);
     expect(response).toContain('Fee Details');
     expect(response).toContain('₹1,00,000');
-    expect(response).toContain('₹85,000');
-    expect(response).toContain('₹15,000');
   });
 
-  it('schedule response contains today\'s schedule', () => {
+  it('schedule response returns login prompt when not authenticated', () => {
     const response = generateResponse(IntentName.Schedule, ctx);
-    expect(response).toContain("Today's Schedule");
-    expect(response).toContain('9:00 - DBMS');
-    expect(response).toContain('2:00 - Lab');
+    expect(response).toContain('please login');
   });
 
-  it('results response contains semester results', () => {
+  it('schedule response contains today\'s schedule when authenticated', () => {
+    const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
+    const response = generateResponse(IntentName.Schedule, authCtx);
+    expect(response).toContain("Today's Schedule");
+  });
+
+  it('results response returns login prompt when not authenticated', () => {
     const response = generateResponse(IntentName.Results, ctx);
+    expect(response).toContain('please login');
+  });
+
+  it('results response contains semester results when authenticated', () => {
+    const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
+    const response = generateResponse(IntentName.Results, authCtx);
     expect(response).toContain('Semester Results');
-    expect(response).toContain('CGPA');
-    expect(response).toContain('9.10');
   });
 
   it('syllabus response contains subject list', () => {
@@ -248,6 +292,12 @@ describe('Response Generator', () => {
     expect(response).toContain('DBMS');
     expect(response).toContain('Java');
     expect(response).toContain('Operating Systems');
+  });
+
+  it('login response contains login URL', () => {
+    const response = generateResponse(IntentName.Login, ctx);
+    expect(response).toContain('Click here');
+    expect(response).toContain('login');
   });
 
   it('help response contains available commands', () => {
@@ -266,6 +316,12 @@ describe('Response Generator', () => {
 
 describe('ChatbotService', () => {
   const service = new ChatbotService();
+  const mockedFindByPhone = vi.mocked(User.findByPhone);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedFindByPhone.mockResolvedValue(null);
+  });
 
   it('processes "Hi" → greeting response', async () => {
     const result = await service.processMessage('Hi', { phone: '111' });
@@ -274,28 +330,34 @@ describe('ChatbotService', () => {
     expect(result.originalText).toBe('Hi');
   });
 
-  it('processes "Attendance" → attendance response', async () => {
+  it('processes "Login" → login response', async () => {
+    const result = await service.processMessage('Login', { phone: '111' });
+    expect(result.intent).toBe(IntentName.Login);
+    expect(result.response).toContain('Click here');
+  });
+
+  it('processes "Attendance" → login prompt (not linked)', async () => {
     const result = await service.processMessage('Attendance', { phone: '222' });
     expect(result.intent).toBe(IntentName.Attendance);
-    expect(result.response).toContain('Attendance Summary');
+    expect(result.response).toContain('please login');
   });
 
-  it('processes "Fee details" → fees response', async () => {
+  it('processes "Fee details" → login prompt (not linked)', async () => {
     const result = await service.processMessage('Fee details', { phone: '333' });
     expect(result.intent).toBe(IntentName.Fees);
-    expect(result.response).toContain('Fee Details');
+    expect(result.response).toContain('please login');
   });
 
-  it('processes "Today\'s schedule" → schedule response', async () => {
+  it('processes "Today\'s schedule" → login prompt (not linked)', async () => {
     const result = await service.processMessage("Today's schedule", { phone: '444' });
     expect(result.intent).toBe(IntentName.Schedule);
-    expect(result.response).toContain("Today's Schedule");
+    expect(result.response).toContain('please login');
   });
 
-  it('processes "Exam results" → results response', async () => {
+  it('processes "Exam results" → login prompt (not linked)', async () => {
     const result = await service.processMessage('Exam results', { phone: '555' });
     expect(result.intent).toBe(IntentName.Results);
-    expect(result.response).toContain('Semester Results');
+    expect(result.response).toContain('please login');
   });
 
   it('processes "DBMS syllabus" → syllabus response', async () => {
@@ -314,5 +376,28 @@ describe('ChatbotService', () => {
     const result = await service.processMessage('Random unsupported message', { phone: '888' });
     expect(result.intent).toBe(IntentName.Unknown);
     expect(result.response).toContain("couldn't understand");
+  });
+
+  it('returns mock data when user is linked', async () => {
+    mockedFindByPhone.mockResolvedValue({
+      _id: { toString: () => 'u1' },
+      fullName: 'Arjun Sharma',
+      role: 'student',
+      studentId: '22CSE001',
+      username: '22CSE001',
+      department: 'CSE',
+      year: 4,
+      section: 'A',
+      whatsappNumber: '917530063885',
+      isActive: true,
+      passwordHash: 'hash',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
+
+    const result = await service.processMessage('Attendance', { phone: '917530063885' });
+    expect(result.intent).toBe(IntentName.Attendance);
+    expect(result.response).toContain('Attendance Summary');
+    expect(result.response).not.toContain('please login');
   });
 });

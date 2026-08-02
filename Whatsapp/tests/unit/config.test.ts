@@ -12,6 +12,7 @@ describe('Config', () => {
       RATE_LIMIT_WINDOW_MS: '900000',
       RATE_LIMIT_MAX: '100',
       WA_SESSION_DIR: './auth_info',
+      JWT_SECRET: 'test-secret-key-at-least-32-chars-long!!',
     };
 
     const result = validateEnv(env);

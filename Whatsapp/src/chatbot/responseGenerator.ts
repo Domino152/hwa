@@ -1,16 +1,21 @@
-import { IntentName, SUBJECTS, type ChatbotContext } from './intents.js';
+import { IntentName, SUBJECTS, PRIVATE_INTENTS, type ChatbotContext, type AuthenticatedUserInfo } from './intents.js';
+import { config } from '../config/index.js';
 
 /**
  * Generate a response for the classified intent.
- *
- * @param intent Classified intent name
- * @param _context Chatbot context (reserved for future DB integration)
- * @returns Response text string
+ * Public intents (help, login, syllabus, greeting, unknown) always return.
+ * Private intents (attendance, fees, schedule, results) require authentication.
  */
-export function generateResponse(intent: IntentName, _context: ChatbotContext): string {
+export function generateResponse(intent: IntentName, context: ChatbotContext): string {
+  if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
+    return loginRequiredResponse();
+  }
+
   switch (intent) {
     case IntentName.Greeting:
-      return greetResponse();
+      return greetResponse(context.user);
+    case IntentName.Login:
+      return loginResponse();
     case IntentName.Attendance:
       return attendanceResponse();
     case IntentName.Fees:
@@ -29,7 +34,17 @@ export function generateResponse(intent: IntentName, _context: ChatbotContext): 
   }
 }
 
-function greetResponse(): string {
+function greetResponse(user?: AuthenticatedUserInfo): string {
+  if (user) {
+    return (
+      `Hello ${user.fullName} 👋\n` +
+      '\n' +
+      'Welcome back to the College AI Assistant.\n' +
+      '\n' +
+      'How can I help you today?'
+    );
+  }
+
   const subjectList = SUBJECTS.map((s) => `• ${s}`).join('\n');
   return (
     'Hello 👋\n' +
@@ -45,6 +60,30 @@ function greetResponse(): string {
     '• Schedule\n' +
     '• Results\n' +
     subjectList
+  );
+}
+
+function loginResponse(): string {
+  const url = config.LOGIN_PORTAL_URL;
+  return (
+    'Welcome to the College AI Assistant.\n' +
+    '\n' +
+    'To access your personal information, please login using the secure portal.\n' +
+    '\n' +
+    `Click here:\n${url}\n` +
+    '\n' +
+    'After successful login, return to WhatsApp and continue chatting.'
+  );
+}
+
+function loginRequiredResponse(): string {
+  const url = config.LOGIN_PORTAL_URL;
+  return (
+    'To access your personal academic information, please login using the secure portal.\n' +
+    '\n' +
+    `Click here:\n${url}\n` +
+    '\n' +
+    'After successful login, return to WhatsApp and continue chatting.'
   );
 }
 
@@ -119,13 +158,15 @@ function helpResponse(): string {
     '• Results\n' +
     '• Syllabus\n' +
     '\n' +
-    'You can type your question naturally.'
+    'You can type your question naturally.\n' +
+    '\n' +
+    'Type "Login" to access your personal information.'
   );
 }
 
 function unknownResponse(): string {
   return (
-    'Sorry, I couldn\'t understand your request.\n' +
+    "Sorry, I couldn't understand your request.\n" +
     '\n' +
     'You can ask about:\n' +
     '\n' +
