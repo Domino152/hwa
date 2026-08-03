@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import type { User } from '../../types/auth.types';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import type { User } from '../types/auth.types';
 
 interface AuthStatusProps {
   onLogout: () => void;

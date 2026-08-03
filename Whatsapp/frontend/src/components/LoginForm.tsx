@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import api from '../../lib/api';
-import type { LoginResponse } from '../../types/auth.types';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import api from '../lib/api';
+import type { LoginResponse } from '../types/auth.types';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 
 const loginSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
@@ -72,7 +72,7 @@ export function LoginForm({ phone, onSuccess }: LoginFormProps) {
         <CardTitle className="text-center">Sign In</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="student" onValueChange={(v) => setRole(v as 'student' | 'parent')}>
+        <Tabs defaultValue="student" onValueChange={(v: string) => setRole(v as 'student' | 'parent')}>
           <TabsList>
             <TabsTrigger value="student">Student</TabsTrigger>
             <TabsTrigger value="parent">Parent</TabsTrigger>

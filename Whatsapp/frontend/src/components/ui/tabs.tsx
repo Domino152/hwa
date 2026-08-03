@@ -12,13 +12,19 @@ interface TabsProps {
   defaultValue: string;
   children: React.ReactNode;
   className?: string;
+  onValueChange?: (value: string) => void;
 }
 
-function Tabs({ defaultValue, children, className }: TabsProps) {
+function Tabs({ defaultValue, children, className, onValueChange }: TabsProps) {
   const [activeTab, setActiveTab] = React.useState(defaultValue);
 
+  const handleSetTab = (tab: string) => {
+    setActiveTab(tab);
+    onValueChange?.(tab);
+  };
+
   return (
-    <TabsContext.Provider value={{ activeTab, setActiveTab }}>
+    <TabsContext.Provider value={{ activeTab, setActiveTab: handleSetTab }}>
       <div className={cn('w-full', className)}>{children}</div>
     </TabsContext.Provider>
   );
