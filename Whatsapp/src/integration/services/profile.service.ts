@@ -1,0 +1,124 @@
+import { User } from '../../database/models/User.js';
+import type { AttendanceIntegrationService } from './attendance.service.js';
+import type { FeeIntegrationService } from './fee.service.js';
+import type { ScheduleIntegrationService } from './schedule.service.js';
+import type { ResultIntegrationService } from './result.service.js';
+import type { StudentProfileResult } from '../types.js';
+
+/**
+ * ProfileService aggregates all student information into a single profile.
+ * It delegates to existing domain services — no duplicated database logic.
+ *
+ * The chatbot (and future web portal / mobile app) calls:
+ *   integration.getStudentProfile(studentId)
+ */
+export class ProfileService {
+  constructor(
+    private readonly attendanceService: AttendanceIntegrationService,
+    private readonly feesService: FeeIntegrationService,
+    private readonly scheduleService: ScheduleIntegrationService,
+    private readonly resultsService: ResultIntegrationService,
+  ) {}
+
+  async getStudentProfile(studentId: string): Promise<StudentProfileResult> {
+    const student = await User.findOne({ studentId, isActive: true }, '-passwordHash');
+    if (!student) {
+      return this.emptyProfile();
+    }
+
+    const parent = await User.findOne({
+      role: 'parent',
+      studentId,
+      isActive: true,
+    }, '-passwordHash');
+
+    const [attendance, fees, schedule, results] = await Promise.all([
+      this.attendanceService.getByStudentId(studentId),
+      this.feesService.getByStudentId(studentId),
+      this.scheduleService.getByStudent({
+        department: student.department,
+        year: student.year,
+        section: student.section,
+      }),
+      this.resultsService.getByStudentId(studentId),
+    ]);
+
+    const summary = {
+      attendancePercentage: attendance.overallPercentage,
+      pendingFeeAmount: fees.fee?.remainingAmount ?? 0,
+      cgpa: results.cgpa,
+      todayClassCount: schedule.entries.length,
+    };
+
+    const status = {
+      hasAttendance: attendance.hasData,
+      hasFees: fees.hasData,
+      hasSchedule: schedule.hasData,
+      hasResults: results.hasData,
+      hasParent: !!parent,
+    };
+
+    const currentSemester = results.hasData && results.results.length > 0
+      ? Math.ceil(results.results.length / 5) || 1
+      : 1;
+
+    return {
+      student: {
+        id: String(student._id),
+        fullName: student.fullName,
+        studentId: student.studentId,
+        department: student.department,
+        year: student.year,
+        section: student.section,
+      },
+      attendance,
+      fees,
+      schedule,
+      results,
+      parent: parent
+        ? {
+            id: String(parent._id),
+            fullName: parent.fullName,
+            whatsappNumber: parent.whatsappNumber,
+          }
+        : null,
+      currentSemester,
+      hasData: true,
+      summary,
+      status,
+    };
+  }
+
+  private emptyProfile(): StudentProfileResult {
+    return {
+      student: {
+        id: '',
+        fullName: '',
+        studentId: '',
+        department: '',
+        year: 0,
+        section: '',
+      },
+      attendance: { records: [], overallPercentage: 0, hasData: false },
+      fees: { fee: null, hasData: false },
+      schedule: { entries: [], dayOfWeek: '', hasData: false },
+      results: { results: [], cgpa: 0, hasData: false },
+      parent: null,
+      currentSemester: 1,
+      hasData: false,
+      summary: {
+        attendancePercentage: 0,
+        pendingFeeAmount: 0,
+        cgpa: 0,
+        todayClassCount: 0,
+      },
+      status: {
+        hasAttendance: false,
+        hasFees: false,
+        hasSchedule: false,
+        hasResults: false,
+        hasParent: false,
+      },
+    };
+  }
+}
