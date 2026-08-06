@@ -1,9 +1,11 @@
-import { Fee } from '../../database/models/Fee.js';
+import type { IFeeRepository } from '../../repositories/fee.repository.js';
 import type { FeeResult } from '../types.js';
 
 export class FeeIntegrationService {
+  constructor(private readonly repo: IFeeRepository) {}
+
   async getByStudentId(studentId: string): Promise<FeeResult> {
-    const fee = await Fee.findOne({ studentId }).sort({ createdAt: -1 });
+    const fee = await this.repo.findLatestFeeByStudentId(studentId);
 
     if (!fee) {
       return { fee: null, hasData: false };

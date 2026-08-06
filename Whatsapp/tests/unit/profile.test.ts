@@ -4,16 +4,29 @@ import type { AttendanceIntegrationService } from '../../src/integration/service
 import type { FeeIntegrationService } from '../../src/integration/services/fee.service.js';
 import type { ScheduleIntegrationService } from '../../src/integration/services/schedule.service.js';
 import type { ResultIntegrationService } from '../../src/integration/services/result.service.js';
+import type { IUserRepository } from '../../src/repositories/user.repository.js';
 
-vi.mock('../../src/database/models/User.js', () => {
-  return {
-    User: {
-      findOne: vi.fn(),
+vi.mock('../../src/integration/index.js', () => ({
+  integration: {
+    findUserByPhone: vi.fn().mockResolvedValue(null),
+    attendance: { getByStudentId: vi.fn().mockResolvedValue({ records: [], overallPercentage: 0, hasData: false }) },
+    fees: { getByStudentId: vi.fn().mockResolvedValue({ fee: null, hasData: false }) },
+    schedule: { getByStudent: vi.fn().mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false }) },
+    results: { getByStudentId: vi.fn().mockResolvedValue({ results: [], cgpa: 0, hasData: false }) },
+    publicInformation: {
+      resolveCategory: vi.fn().mockReturnValue('about_hits'),
+      getByCategory: vi.fn().mockResolvedValue({ entries: [], category: 'about_hits', hasData: false }),
+      search: vi.fn().mockResolvedValue({ entries: [], category: 'about_hits', hasData: false }),
+      getCategoryCounts: vi.fn().mockResolvedValue([]),
     },
-  };
-});
+  },
+}));
 
-import { User } from '../../src/database/models/User.js';
+const mockUserRepo: IUserRepository = {
+  findByPhone: vi.fn(),
+  findByStudentId: vi.fn(),
+  findParentByStudentId: vi.fn(),
+};
 
 const mockAttendance = {
   getByStudentId: vi.fn(),
@@ -32,21 +45,24 @@ const mockResults = {
 } as unknown as ResultIntegrationService;
 
 const mockUser = {
-  _id: 'user123',
+  id: 'user123',
   fullName: 'Arjun Sharma',
   studentId: '22CSE001',
   department: 'CSE',
   year: 4,
   section: 'A',
-  role: 'student',
+  role: 'student' as const,
   whatsappNumber: '917530063885',
 };
 
 const mockParent = {
-  _id: 'parent123',
+  id: 'parent123',
   fullName: 'Suresh Sharma',
   studentId: '22CSE001',
-  role: 'parent',
+  role: 'parent' as const,
+  department: 'CSE',
+  year: 4,
+  section: 'A',
   whatsappNumber: '919876543210',
 };
 
@@ -55,14 +71,12 @@ describe('ProfileService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new ProfileService(mockAttendance, mockFees, mockSchedule, mockResults);
-    vi.mocked(User.findOne).mockReset();
+    service = new ProfileService(mockUserRepo, mockAttendance, mockFees, mockSchedule, mockResults);
   });
 
   it('returns full profile for valid student with all data', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(mockParent as any);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(mockParent);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [{ subject: 'DBMS', percentage: 90, totalClasses: 50, attendedClasses: 45 }],
@@ -106,7 +120,7 @@ describe('ProfileService', () => {
   });
 
   it('returns hasData false for unknown studentId', async () => {
-    vi.mocked(User.findOne).mockResolvedValue(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(null);
 
     const result = await service.getStudentProfile('UNKNOWN');
 
@@ -125,9 +139,8 @@ describe('ProfileService', () => {
   });
 
   it('returns parent null when no parent account exists', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -149,9 +162,8 @@ describe('ProfileService', () => {
   });
 
   it('returns parent info when parent account exists', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(mockParent as any);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(mockParent);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -176,9 +188,8 @@ describe('ProfileService', () => {
   });
 
   it('handles empty attendance gracefully', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -201,9 +212,8 @@ describe('ProfileService', () => {
   });
 
   it('handles empty fees gracefully', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -226,9 +236,8 @@ describe('ProfileService', () => {
   });
 
   it('handles empty schedule gracefully', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -251,9 +260,8 @@ describe('ProfileService', () => {
   });
 
   it('handles empty results gracefully', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -276,9 +284,8 @@ describe('ProfileService', () => {
   });
 
   it('computes currentSemester from results', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -305,9 +312,8 @@ describe('ProfileService', () => {
   });
 
   it('verifies all sub-services are called with correct arguments', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [], overallPercentage: 0, hasData: false,
@@ -324,6 +330,8 @@ describe('ProfileService', () => {
 
     await service.getStudentProfile('22CSE001');
 
+    expect(mockUserRepo.findByStudentId).toHaveBeenCalledWith('22CSE001');
+    expect(mockUserRepo.findParentByStudentId).toHaveBeenCalledWith('22CSE001');
     expect(mockAttendance.getByStudentId).toHaveBeenCalledWith('22CSE001');
     expect(mockFees.getByStudentId).toHaveBeenCalledWith('22CSE001');
     expect(mockSchedule.getByStudent).toHaveBeenCalledWith({
@@ -335,9 +343,8 @@ describe('ProfileService', () => {
   });
 
   it('cross-checks status flags with hasData from each service', async () => {
-    vi.mocked(User.findOne)
-      .mockResolvedValueOnce(mockUser as any)
-      .mockResolvedValueOnce(null);
+    vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
+    vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
     vi.mocked(mockAttendance.getByStudentId).mockResolvedValue({
       records: [{ subject: 'DBMS', percentage: 90, totalClasses: 50, attendedClasses: 45 }],

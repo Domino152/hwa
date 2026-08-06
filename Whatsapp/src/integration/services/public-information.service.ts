@@ -1,7 +1,8 @@
-import { PublicContent, type IPublicContent, type PublicContentCategory, PUBLIC_CONTENT_CATEGORIES } from '../../database/models/PublicContent.js';
-import type { PublicContentData, PublicInformationResult, CategoryCount } from '../types.js';
+import type { IPublicContentRepository } from '../../repositories/public-content.repository.js';
+import { type PublicContentCategory, PUBLIC_CONTENT_CATEGORIES } from '../../database/models/PublicContent.js';
+import type { PublicInformationResult, CategoryCount } from '../types.js';
 
-const CATEGORY_KEYWORDS: Record<PublicContentCategory, string[]> = {
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
   about_hits: ['about hits', 'tell me about', 'college info', 'college information', 'about college', 'what is hits', 'university info'],
   admissions: ['admission', 'admissions', 'how to apply', 'eligibility', 'admission process', 'apply for', 'join'],
   departments: ['department', 'departments', 'cse', 'ece', 'mechanical', 'civil', 'it department', 'dept'],
@@ -21,18 +22,9 @@ const CATEGORY_KEYWORDS: Record<PublicContentCategory, string[]> = {
   faq: ['faq', 'frequently asked', 'common question', 'doubt', 'query'],
 };
 
-function toPlainData(doc: IPublicContent): PublicContentData {
-  return {
-    id: String(doc._id),
-    category: doc.category,
-    title: doc.title,
-    content: doc.content,
-    keywords: doc.keywords,
-    updatedAt: doc.updatedAt,
-  };
-}
-
 export class PublicInformationService {
+  constructor(private readonly repo: IPublicContentRepository) {}
+
   resolveCategory(text: string): PublicContentCategory {
     const normalized = text.toLowerCase().trim();
 
@@ -49,17 +41,13 @@ export class PublicInformationService {
   }
 
   async getByCategory(category: PublicContentCategory): Promise<PublicInformationResult> {
-    const docs = await PublicContent.find({ category, isActive: true }).sort({ title: 1 });
+    const entries = await this.repo.findByCategory(category, true);
 
-    if (docs.length === 0) {
+    if (entries.length === 0) {
       return { entries: [], category, hasData: false };
     }
 
-    return {
-      entries: docs.map(toPlainData),
-      category,
-      hasData: true,
-    };
+    return { entries, category, hasData: true };
   }
 
   async search(query: string): Promise<PublicInformationResult> {
@@ -72,36 +60,23 @@ export class PublicInformationService {
       return { entries: [], category: 'about_hits', hasData: false };
     }
 
-    const regex = new RegExp(terms.join('|'), 'i');
+    const entries = await this.repo.searchByTerms(terms, 5);
 
-    const docs = await PublicContent.find({
-      isActive: true,
-      $or: [
-        { title: regex },
-        { content: regex },
-        { keywords: { $in: terms } },
-      ],
-    }).sort({ title: 1 }).limit(5);
-
-    if (docs.length === 0) {
+    if (entries.length === 0) {
       return { entries: [], category: 'about_hits', hasData: false };
     }
 
     return {
-      entries: docs.map(toPlainData),
-      category: docs[0]!.category,
+      entries,
+      category: entries[0]!.category,
       hasData: true,
     };
   }
 
   async getCategoryCounts(): Promise<CategoryCount[]> {
-    const results = await PublicContent.aggregate([
-      { $match: { isActive: true } },
-      { $group: { _id: '$category', count: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
-    ]);
+    const counts = await this.repo.aggregateCategoryCounts();
 
-    const countMap = new Map(results.map((r) => [r._id, r.count]));
+    const countMap = new Map(counts.map((c) => [c.category, c.count]));
 
     return PUBLIC_CONTENT_CATEGORIES.map((cat) => ({
       category: cat,

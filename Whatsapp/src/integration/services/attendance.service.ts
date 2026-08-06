@@ -1,9 +1,11 @@
-import { Attendance } from '../../database/models/Attendance.js';
+import type { IAttendanceRepository } from '../../repositories/attendance.repository.js';
 import type { AttendanceResult } from '../types.js';
 
 export class AttendanceIntegrationService {
+  constructor(private readonly repo: IAttendanceRepository) {}
+
   async getByStudentId(studentId: string): Promise<AttendanceResult> {
-    const records = await Attendance.find({ studentId }).sort({ subject: 1 });
+    const records = await this.repo.findStudentAttendance(studentId);
 
     if (records.length === 0) {
       return { records: [], overallPercentage: 0, hasData: false };

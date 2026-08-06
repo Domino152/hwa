@@ -3,22 +3,14 @@ import { PublicInformationService } from '../../src/integration/services/public-
 import { classifyIntent } from '../../src/chatbot/intentClassifier.js';
 import { IntentName } from '../../src/chatbot/intents.js';
 
-vi.mock('../../src/database/models/PublicContent.js', () => {
-  return {
-    PublicContent: {
-      find: vi.fn().mockReturnThis(),
-      aggregate: vi.fn().mockResolvedValue([]),
-      sort: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-    },
-    PUBLIC_CONTENT_CATEGORIES: [
-      'about_hits', 'admissions', 'departments', 'courses', 'placements',
-      'hostel', 'transportation', 'scholarships', 'campus_facilities',
-      'library', 'sports', 'clubs', 'events', 'contact', 'location',
-      'achievements', 'faq',
-    ],
-  };
-});
+vi.mock('../../src/database/models/PublicContent.js', () => ({
+  PUBLIC_CONTENT_CATEGORIES: [
+    'about_hits', 'admissions', 'departments', 'courses', 'placements',
+    'hostel', 'transportation', 'scholarships', 'campus_facilities',
+    'library', 'sports', 'clubs', 'events', 'contact', 'location',
+    'achievements', 'faq',
+  ],
+}));
 
 vi.mock('../../src/integration/index.js', () => ({
   integration: {
@@ -36,17 +28,21 @@ vi.mock('../../src/integration/index.js', () => ({
   },
 }));
 
-import { PublicContent } from '../../src/database/models/PublicContent.js';
 import { integration } from '../../src/integration/index.js';
+import type { IPublicContentRepository } from '../../src/repositories/public-content.repository.js';
+
+const mockRepo: IPublicContentRepository = {
+  findByCategory: vi.fn(),
+  searchByTerms: vi.fn(),
+  aggregateCategoryCounts: vi.fn(),
+};
 
 const mockContent = {
-  _id: 'content123',
+  id: 'content123',
   category: 'about_hits',
   title: 'HITS Overview',
   content: 'HITS is a deemed university in Chennai.',
   keywords: ['hits', 'university', 'chennai'],
-  isActive: true,
-  createdAt: new Date(),
   updatedAt: new Date(),
 };
 
@@ -55,7 +51,7 @@ describe('PublicInformationService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new PublicInformationService();
+    service = new PublicInformationService(mockRepo);
   });
 
   describe('resolveCategory', () => {
@@ -130,9 +126,7 @@ describe('PublicInformationService', () => {
 
   describe('getByCategory', () => {
     it('returns content for a valid category', async () => {
-      vi.mocked(PublicContent.find).mockReturnValue({
-        sort: vi.fn().mockResolvedValue([mockContent]),
-      } as any);
+      vi.mocked(mockRepo.findByCategory).mockResolvedValue([mockContent]);
 
       const result = await service.getByCategory('about_hits');
 
@@ -140,12 +134,11 @@ describe('PublicInformationService', () => {
       expect(result.entries).toHaveLength(1);
       expect(result.entries[0].title).toBe('HITS Overview');
       expect(result.entries[0].category).toBe('about_hits');
+      expect(mockRepo.findByCategory).toHaveBeenCalledWith('about_hits', true);
     });
 
     it('returns hasData false for empty category', async () => {
-      vi.mocked(PublicContent.find).mockReturnValue({
-        sort: vi.fn().mockResolvedValue([]),
-      } as any);
+      vi.mocked(mockRepo.findByCategory).mockResolvedValue([]);
 
       const result = await service.getByCategory('about_hits');
 
@@ -156,24 +149,17 @@ describe('PublicInformationService', () => {
 
   describe('search', () => {
     it('searches across all content by keyword', async () => {
-      vi.mocked(PublicContent.find).mockReturnValue({
-        sort: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([mockContent]),
-        }),
-      } as any);
+      vi.mocked(mockRepo.searchByTerms).mockResolvedValue([mockContent]);
 
       const result = await service.search('hits university');
 
       expect(result.hasData).toBe(true);
       expect(result.entries).toHaveLength(1);
+      expect(mockRepo.searchByTerms).toHaveBeenCalledWith(['hits', 'university'], 5);
     });
 
     it('returns hasData false when no results found', async () => {
-      vi.mocked(PublicContent.find).mockReturnValue({
-        sort: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([]),
-        }),
-      } as any);
+      vi.mocked(mockRepo.searchByTerms).mockResolvedValue([]);
 
       const result = await service.search('xyznonexistent');
 
@@ -183,9 +169,9 @@ describe('PublicInformationService', () => {
 
   describe('getCategoryCounts', () => {
     it('returns categories with content counts', async () => {
-      vi.mocked(PublicContent.aggregate).mockResolvedValue([
-        { _id: 'about_hits', count: 1 },
-        { _id: 'departments', count: 3 },
+      vi.mocked(mockRepo.aggregateCategoryCounts).mockResolvedValue([
+        { category: 'about_hits', count: 1 },
+        { category: 'departments', count: 3 },
       ]);
 
       const result = await service.getCategoryCounts();

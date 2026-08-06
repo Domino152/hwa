@@ -1,4 +1,4 @@
-import { User } from '../../database/models/User.js';
+import type { IUserRepository } from '../../repositories/user.repository.js';
 import type { AttendanceIntegrationService } from './attendance.service.js';
 import type { FeeIntegrationService } from './fee.service.js';
 import type { ScheduleIntegrationService } from './schedule.service.js';
@@ -14,6 +14,7 @@ import type { StudentProfileResult } from '../types.js';
  */
 export class ProfileService {
   constructor(
+    private readonly userRepo: IUserRepository,
     private readonly attendanceService: AttendanceIntegrationService,
     private readonly feesService: FeeIntegrationService,
     private readonly scheduleService: ScheduleIntegrationService,
@@ -21,16 +22,12 @@ export class ProfileService {
   ) {}
 
   async getStudentProfile(studentId: string): Promise<StudentProfileResult> {
-    const student = await User.findOne({ studentId, isActive: true }, '-passwordHash');
+    const student = await this.userRepo.findByStudentId(studentId);
     if (!student) {
       return this.emptyProfile();
     }
 
-    const parent = await User.findOne({
-      role: 'parent',
-      studentId,
-      isActive: true,
-    }, '-passwordHash');
+    const parent = await this.userRepo.findParentByStudentId(studentId);
 
     const [attendance, fees, schedule, results] = await Promise.all([
       this.attendanceService.getByStudentId(studentId),
@@ -64,7 +61,7 @@ export class ProfileService {
 
     return {
       student: {
-        id: String(student._id),
+        id: student.id,
         fullName: student.fullName,
         studentId: student.studentId,
         department: student.department,
@@ -77,7 +74,7 @@ export class ProfileService {
       results,
       parent: parent
         ? {
-            id: String(parent._id),
+            id: parent.id,
             fullName: parent.fullName,
             whatsappNumber: parent.whatsappNumber,
           }

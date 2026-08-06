@@ -1,9 +1,11 @@
-import { Result } from '../../database/models/Result.js';
+import type { IResultRepository } from '../../repositories/result.repository.js';
 import type { ResultResult } from '../types.js';
 
 export class ResultIntegrationService {
+  constructor(private readonly repo: IResultRepository) {}
+
   async getByStudentId(studentId: string): Promise<ResultResult> {
-    const results = await Result.find({ studentId }).sort({ subject: 1 });
+    const results = await this.repo.findStudentResults(studentId);
 
     if (results.length === 0) {
       return { results: [], cgpa: 0, hasData: false };
