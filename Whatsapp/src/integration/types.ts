@@ -95,3 +95,23 @@ export interface StudentProfileResult {
     hasParent: boolean;
   };
 }
+
+export interface PublicContentData {
+  id: string;
+  category: string;
+  title: string;
+  content: string;
+  keywords: string[];
+  updatedAt: Date;
+}
+
+export interface PublicInformationResult {
+  entries: PublicContentData[];
+  category: string;
+  hasData: boolean;
+}
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+}

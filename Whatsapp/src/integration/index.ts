@@ -14,4 +14,7 @@ export type {
   ResultResult,
   UserData,
   StudentProfileResult,
+  PublicContentData,
+  PublicInformationResult,
+  CategoryCount,
 } from './types.js';

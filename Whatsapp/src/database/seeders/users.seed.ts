@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { hashPassword } from '../../modules/auth/password.service.js';
 
@@ -32,7 +33,8 @@ export async function seedUsers(): Promise<void> {
     if (exists) continue;
 
     const passwordHash = await hashPassword(userData.password);
-    await User.create({
+
+    await mongoose.connection.db!.collection('users').insertOne({
       fullName: userData.fullName,
       username: userData.username,
       passwordHash,
@@ -41,6 +43,9 @@ export async function seedUsers(): Promise<void> {
       department: userData.department,
       year: userData.year,
       section: userData.section,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     created++;

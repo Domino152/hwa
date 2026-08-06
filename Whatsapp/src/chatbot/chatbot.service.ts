@@ -1,7 +1,7 @@
 import { type IntentName, type ChatbotContext, type ChatbotResponse } from './intents.js';
 import { classifyIntent } from './intentClassifier.js';
 import { generateResponse } from './responseGenerator.js';
-import { User } from '../database/models/User.js';
+import { integration } from '../integration/index.js';
 import logger from '../shared/utils/logger.js';
 
 const chatbotLogger = logger.child({ module: 'chatbot' });
@@ -12,6 +12,8 @@ const chatbotLogger = logger.child({ module: 'chatbot' });
  *
  * User lookup: if a WhatsApp number is linked to a user account,
  * the chatbot identifies them automatically and gates personal-data intents.
+ *
+ * All data access goes through the Integration Layer — no direct model imports.
  */
 export class ChatbotService {
   /**
@@ -22,24 +24,25 @@ export class ChatbotService {
 
     const intent: IntentName = classifyIntent(text);
 
-    const user = await User.findByPhone(context.phone);
+    const userData = await integration.findUserByPhone(context.phone);
 
     const fullContext: ChatbotContext = {
       phone: context.phone,
-      isAuthenticated: !!user,
-      ...(user
+      isAuthenticated: !!userData,
+      originalText: text,
+      ...(userData
         ? {
             user: {
-              id: String(user._id),
-              fullName: user.fullName,
-              role: user.role,
-              studentId: user.studentId,
+              id: userData.id,
+              fullName: userData.fullName,
+              role: userData.role,
+              studentId: userData.studentId,
             },
           }
         : {}),
     };
 
-    const response = generateResponse(intent, fullContext);
+    const response = await generateResponse(intent, fullContext);
 
     const latencyMs = Date.now() - start;
 

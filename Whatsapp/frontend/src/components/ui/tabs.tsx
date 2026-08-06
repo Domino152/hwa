@@ -18,13 +18,16 @@ interface TabsProps {
 function Tabs({ defaultValue, children, className, onValueChange }: TabsProps) {
   const [activeTab, setActiveTab] = React.useState(defaultValue);
 
-  const handleSetTab = (tab: string) => {
-    setActiveTab(tab);
-    onValueChange?.(tab);
-  };
+  const handleSetActiveTab = React.useCallback(
+    (tab: string) => {
+      setActiveTab(tab);
+      onValueChange?.(tab);
+    },
+    [onValueChange],
+  );
 
   return (
-    <TabsContext.Provider value={{ activeTab, setActiveTab: handleSetTab }}>
+    <TabsContext.Provider value={{ activeTab, setActiveTab: handleSetActiveTab }}>
       <div className={cn('w-full', className)}>{children}</div>
     </TabsContext.Provider>
   );

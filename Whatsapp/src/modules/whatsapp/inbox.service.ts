@@ -146,7 +146,7 @@ export class InboxService {
     userMessage: string,
   ): Promise<void> {
     try {
-      const chatbotResult = await chatbotService.processMessage(userMessage, { phone });
+      const chatbotResult = await chatbotService.processMessage(userMessage, { phone, originalText: userMessage });
       const replyText = chatbotResult.response;
 
       const requestId = `auto-reply-${Date.now()}`;

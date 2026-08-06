@@ -3,6 +3,7 @@ import { FeeIntegrationService } from './services/fee.service.js';
 import { ScheduleIntegrationService } from './services/schedule.service.js';
 import { ResultIntegrationService } from './services/result.service.js';
 import { ProfileService } from './services/profile.service.js';
+import { PublicInformationService } from './services/public-information.service.js';
 import { User } from '../database/models/User.js';
 import type { UserData, StudentProfileResult } from './types.js';
 
@@ -16,6 +17,7 @@ export class IntegrationService {
   readonly fees = new FeeIntegrationService();
   readonly schedule = new ScheduleIntegrationService();
   readonly results = new ResultIntegrationService();
+  readonly publicInformation = new PublicInformationService();
   readonly profile: ProfileService;
 
   constructor() {

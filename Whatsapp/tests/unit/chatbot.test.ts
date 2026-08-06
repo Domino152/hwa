@@ -4,14 +4,22 @@ import { classifyIntent } from '../../src/chatbot/intentClassifier.js';
 import { generateResponse } from '../../src/chatbot/responseGenerator.js';
 import { IntentName } from '../../src/chatbot/intents.js';
 import { ChatbotService } from '../../src/chatbot/chatbot.service.js';
+import { integration } from '../../src/integration/index.js';
 
-vi.mock('../../src/database/models/User.js', () => ({
-  User: {
-    findByPhone: vi.fn().mockResolvedValue(null),
+vi.mock('../../src/integration/index.js', () => ({
+  integration: {
+    findUserByPhone: vi.fn().mockResolvedValue(null),
+    attendance: { getByStudentId: vi.fn().mockResolvedValue({ records: [], overallPercentage: 0, hasData: false }) },
+    fees: { getByStudentId: vi.fn().mockResolvedValue({ fee: null, hasData: false }) },
+    schedule: { getByStudent: vi.fn().mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false }) },
+    results: { getByStudentId: vi.fn().mockResolvedValue({ results: [], cgpa: 0, hasData: false }) },
+    publicInformation: {
+      resolveCategory: vi.fn().mockReturnValue('about_hits'),
+      getByCategory: vi.fn().mockResolvedValue({ entries: [], category: 'about_hits', hasData: false }),
+      search: vi.fn().mockResolvedValue({ entries: [], category: 'about_hits', hasData: false }),
+    },
   },
 }));
-
-import { User } from '../../src/database/models/User.js';
 
 describe('Chatbot Helpers', () => {
   describe('normalizeText', () => {
@@ -231,84 +239,134 @@ describe('Intent Classifier', () => {
 describe('Response Generator', () => {
   const ctx = { phone: '1234567890', isAuthenticated: false };
 
-  it('greeting response contains welcome and subject list', () => {
-    const response = generateResponse(IntentName.Greeting, ctx);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(integration.attendance.getByStudentId).mockResolvedValue({ records: [], overallPercentage: 0, hasData: false });
+    vi.mocked(integration.fees.getByStudentId).mockResolvedValue({ fee: null, hasData: false });
+    vi.mocked(integration.schedule.getByStudent).mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false });
+    vi.mocked(integration.results.getByStudentId).mockResolvedValue({ results: [], cgpa: 0, hasData: false });
+  });
+
+  it('greeting response contains welcome and subject list', async () => {
+    const response = await generateResponse(IntentName.Greeting, ctx);
     expect(response).toContain('Hello');
     expect(response).toContain('Welcome');
     expect(response).toContain('Attendance');
     expect(response).toContain('DBMS');
   });
 
-  it('attendance response returns login prompt when not authenticated', () => {
-    const response = generateResponse(IntentName.Attendance, ctx);
+  it('attendance response returns login prompt when not authenticated', async () => {
+    const response = await generateResponse(IntentName.Attendance, ctx);
     expect(response).toContain('please login');
     expect(response).toContain('Click here');
   });
 
-  it('attendance response contains attendance summary when authenticated', () => {
+  it('attendance response contains attendance summary when authenticated', async () => {
     const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
-    const response = generateResponse(IntentName.Attendance, authCtx);
+    vi.mocked(integration.attendance.getByStudentId).mockResolvedValue({
+      records: [
+        { subject: 'DBMS', percentage: 90, totalClasses: 50, attendedClasses: 45 },
+        { subject: 'Java', percentage: 84, totalClasses: 50, attendedClasses: 42 },
+        { subject: 'Operating Systems', percentage: 74, totalClasses: 50, attendedClasses: 37 },
+      ],
+      overallPercentage: 83,
+      hasData: true,
+    });
+    const response = await generateResponse(IntentName.Attendance, authCtx);
     expect(response).toContain('Attendance Summary');
-    expect(response).toContain('82%');
+    expect(response).toContain('DBMS');
+    expect(response).toContain('90%');
   });
 
-  it('fees response returns login prompt when not authenticated', () => {
-    const response = generateResponse(IntentName.Fees, ctx);
+  it('fees response returns login prompt when not authenticated', async () => {
+    const response = await generateResponse(IntentName.Fees, ctx);
     expect(response).toContain('please login');
   });
 
-  it('fees response contains fee details when authenticated', () => {
+  it('fees response contains fee details when authenticated', async () => {
     const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
-    const response = generateResponse(IntentName.Fees, authCtx);
+    vi.mocked(integration.fees.getByStudentId).mockResolvedValue({
+      fee: {
+        totalFee: 100000,
+        paidAmount: 85000,
+        remainingAmount: 15000,
+        dueDate: new Date('2026-08-15'),
+        feeType: 'Tuition Fee',
+        status: 'partial',
+      },
+      hasData: true,
+    });
+    const response = await generateResponse(IntentName.Fees, authCtx);
     expect(response).toContain('Fee Details');
-    expect(response).toContain('₹1,00,000');
+    expect(response).toContain('1,00,000');
   });
 
-  it('schedule response returns login prompt when not authenticated', () => {
-    const response = generateResponse(IntentName.Schedule, ctx);
+  it('schedule response returns login prompt when not authenticated', async () => {
+    const response = await generateResponse(IntentName.Schedule, ctx);
     expect(response).toContain('please login');
   });
 
-  it('schedule response contains today\'s schedule when authenticated', () => {
+  it('schedule response contains today\'s schedule when authenticated', async () => {
     const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
-    const response = generateResponse(IntentName.Schedule, authCtx);
-    expect(response).toContain("Today's Schedule");
+    vi.mocked(integration.schedule.getByStudent).mockResolvedValue({
+      entries: [
+        { timeSlot: '09:00 - 10:00', subject: 'DBMS', room: 'Room 301', type: 'lecture' },
+        { timeSlot: '10:00 - 11:00', subject: 'Java', room: 'Room 301', type: 'lecture' },
+      ],
+      dayOfWeek: 'Monday',
+      hasData: true,
+    });
+    const response = await generateResponse(IntentName.Schedule, authCtx);
+    expect(response).toContain("Schedule");
+    expect(response).toContain('DBMS');
+    expect(response).toContain('Java');
   });
 
-  it('results response returns login prompt when not authenticated', () => {
-    const response = generateResponse(IntentName.Results, ctx);
+  it('results response returns login prompt when not authenticated', async () => {
+    const response = await generateResponse(IntentName.Results, ctx);
     expect(response).toContain('please login');
   });
 
-  it('results response contains semester results when authenticated', () => {
+  it('results response contains semester results when authenticated', async () => {
     const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
-    const response = generateResponse(IntentName.Results, authCtx);
+    vi.mocked(integration.results.getByStudentId).mockResolvedValue({
+      results: [
+        { subject: 'DBMS', grade: 'A', marksObtained: 92, totalMarks: 100 },
+        { subject: 'Java', grade: 'A+', marksObtained: 96, totalMarks: 100 },
+        { subject: 'Operating Systems', grade: 'B+', marksObtained: 87, totalMarks: 100 },
+      ],
+      cgpa: 9.1,
+      hasData: true,
+    });
+    const response = await generateResponse(IntentName.Results, authCtx);
     expect(response).toContain('Semester Results');
+    expect(response).toContain('DBMS');
+    expect(response).toContain('A');
   });
 
-  it('syllabus response contains subject list', () => {
-    const response = generateResponse(IntentName.Syllabus, ctx);
+  it('syllabus response contains subject list', async () => {
+    const response = await generateResponse(IntentName.Syllabus, ctx);
     expect(response).toContain('Available Syllabus');
     expect(response).toContain('DBMS');
     expect(response).toContain('Java');
     expect(response).toContain('Operating Systems');
   });
 
-  it('login response contains login URL', () => {
-    const response = generateResponse(IntentName.Login, ctx);
+  it('login response contains login URL', async () => {
+    const response = await generateResponse(IntentName.Login, ctx);
     expect(response).toContain('Click here');
     expect(response).toContain('login');
   });
 
-  it('help response contains available commands', () => {
-    const response = generateResponse(IntentName.Help, ctx);
+  it('help response contains available commands', async () => {
+    const response = await generateResponse(IntentName.Help, ctx);
     expect(response).toContain('Available Commands');
     expect(response).toContain('Attendance');
     expect(response).toContain('Fees');
   });
 
-  it('unknown response contains guidance', () => {
-    const response = generateResponse(IntentName.Unknown, ctx);
+  it('unknown response contains guidance', async () => {
+    const response = await generateResponse(IntentName.Unknown, ctx);
     expect(response).toContain("couldn't understand");
     expect(response).toContain('Help');
   });
@@ -316,11 +374,14 @@ describe('Response Generator', () => {
 
 describe('ChatbotService', () => {
   const service = new ChatbotService();
-  const mockedFindByPhone = vi.mocked(User.findByPhone);
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedFindByPhone.mockResolvedValue(null);
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+    vi.mocked(integration.attendance.getByStudentId).mockResolvedValue({ records: [], overallPercentage: 0, hasData: false });
+    vi.mocked(integration.fees.getByStudentId).mockResolvedValue({ fee: null, hasData: false });
+    vi.mocked(integration.schedule.getByStudent).mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false });
+    vi.mocked(integration.results.getByStudentId).mockResolvedValue({ results: [], cgpa: 0, hasData: false });
   });
 
   it('processes "Hi" → greeting response', async () => {
@@ -378,26 +439,30 @@ describe('ChatbotService', () => {
     expect(result.response).toContain("couldn't understand");
   });
 
-  it('returns mock data when user is linked', async () => {
-    mockedFindByPhone.mockResolvedValue({
-      _id: { toString: () => 'u1' },
+  it('returns DB data when user is linked', async () => {
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1',
       fullName: 'Arjun Sharma',
       role: 'student',
       studentId: '22CSE001',
-      username: '22CSE001',
       department: 'CSE',
       year: 4,
       section: 'A',
-      whatsappNumber: '917530063885',
-      isActive: true,
-      passwordHash: 'hash',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as any);
+    });
+
+    vi.mocked(integration.attendance.getByStudentId).mockResolvedValue({
+      records: [
+        { subject: 'DBMS', percentage: 90, totalClasses: 50, attendedClasses: 45 },
+        { subject: 'Java', percentage: 84, totalClasses: 50, attendedClasses: 42 },
+      ],
+      overallPercentage: 87,
+      hasData: true,
+    });
 
     const result = await service.processMessage('Attendance', { phone: '917530063885' });
     expect(result.intent).toBe(IntentName.Attendance);
     expect(result.response).toContain('Attendance Summary');
+    expect(result.response).toContain('DBMS');
     expect(result.response).not.toContain('please login');
   });
 });
