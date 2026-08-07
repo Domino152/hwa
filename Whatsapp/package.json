@@ -25,6 +25,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@google/genai": "^2.16.0",
     "@hapi/boom": "^10.0.1",
     "baileys": "6.7.24",
     "bcrypt": "^6.0.0",

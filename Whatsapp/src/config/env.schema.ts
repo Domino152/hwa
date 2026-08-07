@@ -35,6 +35,7 @@ const envSchema = z
     JWT_EXPIRES_IN: z.string().default('7d'),
     LOGIN_PORTAL_URL: z.string().default('http://localhost:5173/login'),
     BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(20).default(10),
+    GEMINI_API_KEY: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
@@ -62,6 +63,14 @@ const envSchema = z
           path: ['LOGIN_PORTAL_URL'],
         });
       }
+
+      if (!data.GEMINI_API_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'GEMINI_API_KEY is required in production for AI features',
+          path: ['GEMINI_API_KEY'],
+        });
+      }
     }
   });
 
@@ -71,7 +80,7 @@ export function validateEnv(raw: Record<string, unknown>): Env {
   const result = envSchema.safeParse(raw);
   if (!result.success) {
     const flattened = result.error.flatten();
-    console.error('❌ Invalid environment variables:');
+    console.error('? Invalid environment variables:');
     for (const [field, messages] of Object.entries(flattened.fieldErrors)) {
       console.error(`  ${field}: ${messages.join(', ')}`);
     }

@@ -22,6 +22,8 @@ import announcementRoutes from './modules/announcements/announcement.routes.js';
 import studentRoutes from './modules/students/students.routes.js';
 import parentRoutes from './modules/parents/parent.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
+import { createAIRoutes } from './modules/ai/index.js';
+import { getAIService } from './modules/ai/index.js';
 
 export function createApp(): express.Express {
   const app = express();
@@ -62,6 +64,7 @@ export function createApp(): express.Express {
   app.use(`${API_PREFIX}/students`, studentRoutes);
   app.use(`${API_PREFIX}/parents`, parentRoutes);
   app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
+  app.use(`${API_PREFIX}/ai`, createAIRoutes(getAIService()));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

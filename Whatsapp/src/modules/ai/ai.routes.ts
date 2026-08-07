@@ -1,10 +1,29 @@
-import { Router, type Request, type Response } from 'express';
-import { sendSuccess } from '../../shared/utils/response.js';
+import { Router } from 'express';
+import { AIController } from './ai.controller.js';
+import { asyncHandler } from '../../middleware/async-handler.js';
+import { authenticate } from '../auth/auth.middleware.js';
+import { validate } from '../../middleware/validate.js';
+import { chatSchema } from './ai.schemas.js';
+import type { IAIService } from './ai.types.js';
 
-const router = Router();
+/**
+ * Create AI routes with the injected AI service.
+ *
+ * The controller is instantiated here to keep route files self-contained
+ * (consistent with WhatsApp module pattern).
+ */
+export function createAIRoutes(aiService: IAIService): Router {
+  const controller = new AIController(aiService);
+  const router = Router();
 
-router.get('/', (_req: Request, res: Response) => {
-  sendSuccess(res, { module: 'ai', status: 'placeholder', version: '1.0.0' });
-});
+  router.post(
+    '/chat',
+    authenticate,
+    validate(chatSchema),
+    asyncHandler(controller.chat),
+  );
 
-export default router;
+  return router;
+}
+
+export type { IAIService } from './ai.types.js';
