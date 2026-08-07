@@ -25,6 +25,10 @@ export type {
   CategoryCountRecord,
   SubjectRecord,
   AnnouncementRecord,
+  AnnouncementAttachment,
+  AnnouncementCategory,
+  AnnouncementPriority,
+  AnnouncementAudience,
   StudentRecord,
 } from './types.js';
 

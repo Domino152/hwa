@@ -4,7 +4,10 @@ import { announcementService } from './index.js';
 import { authenticate } from '../auth/auth.middleware.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../middleware/async-handler.js';
-import { createAnnouncementSchema, updateAnnouncementSchema } from './announcement.schemas.js';
+import {
+  createAnnouncementSchema,
+  updateAnnouncementSchema,
+} from './announcement.schemas.js';
 
 const announcementController = new AnnouncementController(announcementService);
 
@@ -16,14 +19,31 @@ router.get(
 );
 
 router.get(
+  '/count',
+  authenticate,
+  asyncHandler(announcementController.getCount),
+);
+
+router.get(
   '/expiring',
   authenticate,
   asyncHandler(announcementController.getExpiringSoon),
 );
 
 router.get(
+  '/expired',
+  authenticate,
+  asyncHandler(announcementController.getExpired),
+);
+
+router.get(
   '/department/:department',
   asyncHandler(announcementController.getByDepartment),
+);
+
+router.get(
+  '/semester/:semester',
+  asyncHandler(announcementController.getBySemester),
 );
 
 router.get(

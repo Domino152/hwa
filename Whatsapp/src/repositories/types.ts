@@ -194,18 +194,34 @@ export interface SubjectRecord {
   isActive: boolean;
 }
 
+export type AnnouncementCategory = 'college' | 'department';
+export type AnnouncementPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type AnnouncementAudience = 'all' | 'students' | 'parents' | 'department';
+
+export interface AnnouncementAttachment {
+  url: string;
+  name: string;
+  type: string;
+}
+
 export interface AnnouncementRecord {
   id: string;
   title: string;
   content: string;
-  audience: 'all' | 'students' | 'parents' | 'department';
+  category: AnnouncementCategory;
+  audience: AnnouncementAudience;
   department: string | null;
-  priority: 'low' | 'normal' | 'high' | 'urgent';
+  semester: number | null;
+  academicYear: string | null;
+  targetSemesters: number[];
+  priority: AnnouncementPriority;
+  attachments: AnnouncementAttachment[];
   isActive: boolean;
   publishedAt: Date | null;
   expiresAt: Date | null;
   createdBy: string;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface StudentRecord {

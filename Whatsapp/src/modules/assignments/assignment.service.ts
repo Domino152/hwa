@@ -190,7 +190,7 @@ export class AssignmentService {
     let submission: AssignmentSubmissionRecord;
 
     if (existing && existing.status === 'returned') {
-      const updated = await this.submissionRepo.update(existing.id, {
+      const updated = await this.submissionRepo.update(existing.id!, {
         submissionDate: now,
         isLate,
         latePenalty,
