@@ -6,9 +6,8 @@ import { IntentName } from '../../src/chatbot/intents.js';
 vi.mock('../../src/database/models/PublicContent.js', () => ({
   PUBLIC_CONTENT_CATEGORIES: [
     'about_hits', 'admissions', 'departments', 'courses', 'placements',
-    'hostel', 'transportation', 'scholarships', 'campus_facilities',
-    'library', 'sports', 'clubs', 'events', 'contact', 'location',
-    'achievements', 'faq',
+    'hostel', 'transportation', 'scholarships', 'library', 'sports',
+    'events', 'contact', 'campus_map', 'faq',
   ],
 }));
 
@@ -32,9 +31,14 @@ import { integration } from '../../src/integration/index.js';
 import type { IPublicContentRepository } from '../../src/repositories/public-content.repository.js';
 
 const mockRepo: IPublicContentRepository = {
+  findById: vi.fn(),
   findByCategory: vi.fn(),
+  findAll: vi.fn(),
   searchByTerms: vi.fn(),
   aggregateCategoryCounts: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  delete: vi.fn(),
 };
 
 const mockContent = {
@@ -43,6 +47,8 @@ const mockContent = {
   title: 'HITS Overview',
   content: 'HITS is a deemed university in Chennai.',
   keywords: ['hits', 'university', 'chennai'],
+  isActive: true,
+  createdAt: new Date(),
   updatedAt: new Date(),
 };
 
@@ -91,10 +97,6 @@ describe('PublicInformationService', () => {
       expect(service.resolveCategory('sports facilities')).toBe('sports');
     });
 
-    it('resolves "student clubs" → clubs', () => {
-      expect(service.resolveCategory('student clubs')).toBe('clubs');
-    });
-
     it('resolves "annual events" → events', () => {
       expect(service.resolveCategory('annual events')).toBe('events');
     });
@@ -103,12 +105,12 @@ describe('PublicInformationService', () => {
       expect(service.resolveCategory('contact number')).toBe('contact');
     });
 
-    it('resolves "campus location" → location', () => {
-      expect(service.resolveCategory('campus location')).toBe('location');
+    it('resolves "campus location" → campus_map', () => {
+      expect(service.resolveCategory('campus location')).toBe('campus_map');
     });
 
-    it('resolves "naac ranking" → achievements', () => {
-      expect(service.resolveCategory('naac ranking')).toBe('achievements');
+    it('resolves "naac ranking" → about_hits (default)', () => {
+      expect(service.resolveCategory('naac ranking')).toBe('about_hits');
     });
 
     it('resolves "faq" → faq', () => {
@@ -176,10 +178,116 @@ describe('PublicInformationService', () => {
 
       const result = await service.getCategoryCounts();
 
-      expect(result).toHaveLength(17);
+      expect(result).toHaveLength(14);
       expect(result.find((c) => c.category === 'about_hits')?.count).toBe(1);
       expect(result.find((c) => c.category === 'departments')?.count).toBe(3);
       expect(result.find((c) => c.category === 'sports')?.count).toBe(0);
+    });
+  });
+
+  describe('getById', () => {
+    it('returns an entry by id', async () => {
+      vi.mocked(mockRepo.findById).mockResolvedValue(mockContent);
+
+      const result = await service.getById('content123');
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('content123');
+      expect(result!.title).toBe('HITS Overview');
+      expect(mockRepo.findById).toHaveBeenCalledWith('content123');
+    });
+
+    it('returns null for non-existent id', async () => {
+      vi.mocked(mockRepo.findById).mockResolvedValue(null);
+
+      const result = await service.getById('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getAll', () => {
+    it('returns all entries', async () => {
+      vi.mocked(mockRepo.findAll).mockResolvedValue([mockContent]);
+
+      const result = await service.getAll();
+
+      expect(result).toHaveLength(1);
+      expect(mockRepo.findAll).toHaveBeenCalledWith(undefined);
+    });
+
+    it('filters by isActive', async () => {
+      vi.mocked(mockRepo.findAll).mockResolvedValue([mockContent]);
+
+      const result = await service.getAll(true);
+
+      expect(result).toHaveLength(1);
+      expect(mockRepo.findAll).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('create', () => {
+    it('creates a new entry', async () => {
+      const newEntry = { ...mockContent, id: 'new123', createdAt: new Date(), updatedAt: new Date() };
+      vi.mocked(mockRepo.create).mockResolvedValue(newEntry);
+
+      const result = await service.create({
+        category: 'about_hits',
+        title: 'HITS Overview',
+        content: 'HITS is a deemed university.',
+        keywords: ['hits'],
+      });
+
+      expect(result.id).toBe('new123');
+      expect(mockRepo.create).toHaveBeenCalled();
+    });
+
+    it('defaults isActive to true', async () => {
+      const newEntry = { ...mockContent, isActive: true, createdAt: new Date(), updatedAt: new Date() };
+      vi.mocked(mockRepo.create).mockResolvedValue(newEntry);
+
+      const result = await service.create({
+        category: 'about_hits',
+        title: 'Test',
+        content: 'Test content',
+      });
+
+      expect(result.isActive).toBe(true);
+    });
+  });
+
+  describe('update', () => {
+    it('updates an existing entry', async () => {
+      const updated = { ...mockContent, title: 'Updated Title' };
+      vi.mocked(mockRepo.update).mockResolvedValue(updated);
+
+      const result = await service.update('content123', { title: 'Updated Title' });
+
+      expect(result.title).toBe('Updated Title');
+      expect(mockRepo.update).toHaveBeenCalledWith('content123', { title: 'Updated Title' });
+    });
+
+    it('throws NotFoundError for non-existent id', async () => {
+      vi.mocked(mockRepo.update).mockResolvedValue(null);
+
+      await expect(service.update('nonexistent', { title: 'Test' })).rejects.toThrow('PublicContent');
+    });
+  });
+
+  describe('delete', () => {
+    it('deletes an entry', async () => {
+      vi.mocked(mockRepo.delete).mockResolvedValue(true);
+
+      const result = await service.delete('content123');
+
+      expect(result).toBe(true);
+      expect(mockRepo.delete).toHaveBeenCalledWith('content123');
+    });
+
+    it('throws NotFoundError for non-existent id', async () => {
+      vi.mocked(mockRepo.delete).mockResolvedValue(false);
+
+      await expect(service.delete('nonexistent')).rejects.toThrow('PublicContent');
     });
   });
 });

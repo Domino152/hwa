@@ -173,6 +173,8 @@ export interface PublicContentRecord {
   title: string;
   content: string;
   keywords: string[];
+  isActive: boolean;
+  createdAt: Date;
   updatedAt: Date;
 }
 

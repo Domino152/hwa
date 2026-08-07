@@ -1,6 +1,8 @@
 import type { IPublicContentRepository } from '../../repositories/public-content.repository.js';
+import type { PublicContentRecord } from '../../repositories/types.js';
 import { type PublicContentCategory, PUBLIC_CONTENT_CATEGORIES } from '../../database/models/PublicContent.js';
 import type { PublicInformationResult, CategoryCount } from '../types.js';
+import { NotFoundError } from '../../shared/utils/errors.js';
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   about_hits: ['about hits', 'tell me about', 'college info', 'college information', 'about college', 'what is hits', 'university info'],
@@ -12,13 +14,10 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   transportation: ['bus', 'transport', 'transportation', 'route', 'shuttle', 'commute'],
   scholarships: ['scholarship', 'scholarships', 'financial aid', 'fee waiver', 'bursary', 'funding'],
   sports: ['sport', 'sports', 'gym', 'cricket', 'football', 'basketball', 'tennis', 'athletics', 'swimming'],
-  campus_facilities: ['facility', 'facilities', 'infrastructure', 'building', 'lab', 'laboratory'],
   library: ['library', 'books', 'reading room', 'bibliography', 'journal'],
-  clubs: ['club', 'clubs', 'society', 'societies', 'association', 'student club', 'technical club'],
   events: ['event', 'events', 'fest', 'workshop', 'seminar', 'conference', 'symposium', 'celebration'],
   contact: ['contact', 'phone', 'email', 'address', 'reach us', 'get in touch', 'helpline'],
-  location: ['location', 'map', 'direction', 'where is', 'find us', 'campus location', 'how to reach'],
-  achievements: ['achievement', 'achievements', 'award', 'ranking', 'accreditation', 'recognition', 'naac'],
+  campus_map: ['campus map', 'map', 'direction', 'where is', 'find us', 'campus location', 'how to reach', 'location'],
   faq: ['faq', 'frequently asked', 'common question', 'doubt', 'query'],
 };
 
@@ -38,6 +37,14 @@ export class PublicInformationService {
     }
 
     return 'about_hits';
+  }
+
+  async getById(id: string): Promise<PublicContentRecord | null> {
+    return this.repo.findById(id);
+  }
+
+  async getAll(isActive?: boolean): Promise<PublicContentRecord[]> {
+    return this.repo.findAll(isActive);
   }
 
   async getByCategory(category: PublicContentCategory): Promise<PublicInformationResult> {
@@ -82,5 +89,28 @@ export class PublicInformationService {
       category: cat,
       count: countMap.get(cat) ?? 0,
     }));
+  }
+
+  async create(data: { category: PublicContentCategory; title: string; content: string; keywords?: string[]; isActive?: boolean }): Promise<PublicContentRecord> {
+    return this.repo.create({
+      category: data.category,
+      title: data.title,
+      content: data.content,
+      keywords: data.keywords ?? [],
+      isActive: data.isActive ?? true,
+      createdAt: new Date(),
+    });
+  }
+
+  async update(id: string, data: Partial<Omit<PublicContentRecord, 'id' | 'createdAt' | 'updatedAt'>>): Promise<PublicContentRecord> {
+    const updated = await this.repo.update(id, data);
+    if (!updated) throw new NotFoundError('PublicContent');
+    return updated;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const deleted = await this.repo.delete(id);
+    if (!deleted) throw new NotFoundError('PublicContent');
+    return true;
   }
 }

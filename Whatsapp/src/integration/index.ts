@@ -48,6 +48,7 @@ const resultService = new ResultIntegrationService(resultRepo);
 const detailedResultDomainService = new DetailedResultService(detailedResultRepo, subjectRepo);
 const detailedResultService = new DetailedResultIntegrationService(detailedResultDomainService);
 const publicInformationService = new PublicInformationService(publicContentRepo);
+export { publicInformationService };
 const profileService = new ProfileService(userRepo, attendanceService, feeService, scheduleService, resultService, detailedResultService);
 const studentIntegrationService = new StudentIntegrationService(studentRepo);
 

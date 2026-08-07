@@ -9,14 +9,11 @@ export type PublicContentCategory =
   | 'hostel'
   | 'transportation'
   | 'scholarships'
-  | 'campus_facilities'
   | 'library'
   | 'sports'
-  | 'clubs'
   | 'events'
   | 'contact'
-  | 'location'
-  | 'achievements'
+  | 'campus_map'
   | 'faq';
 
 export const PUBLIC_CONTENT_CATEGORIES: readonly PublicContentCategory[] = [
@@ -28,14 +25,11 @@ export const PUBLIC_CONTENT_CATEGORIES: readonly PublicContentCategory[] = [
   'hostel',
   'transportation',
   'scholarships',
-  'campus_facilities',
   'library',
   'sports',
-  'clubs',
   'events',
   'contact',
-  'location',
-  'achievements',
+  'campus_map',
   'faq',
 ] as const;
 
