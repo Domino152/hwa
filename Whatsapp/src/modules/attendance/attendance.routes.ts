@@ -8,17 +8,119 @@ import {
   createAttendanceSchema,
   updateAttendanceSchema,
   bulkAttendanceSchema,
+  dailyAttendanceSchema,
+  bulkDailyAttendanceSchema,
 } from './attendance.schemas.js';
 
 const attendanceController = new AttendanceController(attendanceService);
 
 const router = Router();
 
+// --- Daily Attendance (specific routes first) ---
+
 router.get(
-  '/student/:studentId',
+  '/daily/date-range',
   authenticate,
-  asyncHandler(attendanceController.getByStudentId),
+  asyncHandler(attendanceController.getDailyByDateRange),
 );
+
+router.get(
+  '/daily/faculty/:facultyId',
+  authenticate,
+  asyncHandler(attendanceController.getFacultyMarkedRecords),
+);
+
+router.get(
+  '/daily/student/:studentId/date',
+  authenticate,
+  asyncHandler(attendanceController.getDailyByStudentAndDate),
+);
+
+router.get(
+  '/daily/student/:studentId/subject/:subject',
+  authenticate,
+  asyncHandler(attendanceController.getDailyByStudentAndSubject),
+);
+
+router.get(
+  '/daily/student/:studentId/semester',
+  authenticate,
+  asyncHandler(attendanceController.getDailyByStudentAndSemester),
+);
+
+router.post(
+  '/daily',
+  authenticate,
+  validate(dailyAttendanceSchema),
+  asyncHandler(attendanceController.markDaily),
+);
+
+router.post(
+  '/daily/bulk',
+  authenticate,
+  validate(bulkDailyAttendanceSchema),
+  asyncHandler(attendanceController.markBulkDaily),
+);
+
+// --- Reports ---
+
+router.get(
+  '/report/monthly/:studentId',
+  authenticate,
+  asyncHandler(attendanceController.getMonthlyReport),
+);
+
+router.get(
+  '/report/semester/:studentId',
+  authenticate,
+  asyncHandler(attendanceController.getSemesterReport),
+);
+
+// --- Analytics & Summary ---
+
+router.get(
+  '/analytics/:studentId',
+  authenticate,
+  asyncHandler(attendanceController.getAnalytics),
+);
+
+router.get(
+  '/summary/:studentId',
+  authenticate,
+  asyncHandler(attendanceController.getSummary),
+);
+
+// --- Below-75% Detection ---
+
+router.get(
+  '/below-threshold',
+  authenticate,
+  asyncHandler(attendanceController.getBelowThreshold),
+);
+
+router.post(
+  '/detect-alerts',
+  authenticate,
+  asyncHandler(attendanceController.detectAndAlert),
+);
+
+// --- History ---
+
+router.get(
+  '/history/:studentId',
+  authenticate,
+  asyncHandler(attendanceController.getHistory),
+);
+
+// --- Student Lookup ---
+
+router.get(
+  '/lookup/:studentId',
+  authenticate,
+  asyncHandler(attendanceController.lookupStudent),
+);
+
+// --- Aggregate (existing) ---
 
 router.get(
   '/student/:studentId/subject/:subject',
@@ -36,6 +138,12 @@ router.get(
   '/department/stats',
   authenticate,
   asyncHandler(attendanceController.getDepartmentStats),
+);
+
+router.get(
+  '/student/:studentId',
+  authenticate,
+  asyncHandler(attendanceController.getByStudentId),
 );
 
 router.post(

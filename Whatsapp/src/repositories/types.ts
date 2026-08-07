@@ -13,6 +13,19 @@ export interface AttendanceRecord {
   academicYear: string;
 }
 
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
+
+export interface DailyAttendanceRecord {
+  studentId: string;
+  subject: string;
+  date: Date;
+  status: AttendanceStatus;
+  markedBy: string | null;
+  semester: number;
+  academicYear: string;
+  notes: string | null;
+}
+
 export interface FeeRecord {
   studentId: string;
   feeType: string;
