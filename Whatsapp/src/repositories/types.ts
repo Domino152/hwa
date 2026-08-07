@@ -233,3 +233,205 @@ export interface StudentRecord {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type FeeCategory = 'tuition' | 'hostel' | 'exam' | 'lab' | 'transport' | 'library' | 'sports' | 'development' | 'misc';
+export type FeeFrequency = 'one_time' | 'semester' | 'yearly';
+
+export interface FeeStructureRecord {
+  id?: string;
+  code: string;
+  name: string;
+  category: FeeCategory;
+  amount: number;
+  frequency: FeeFrequency;
+  department: string;
+  program: string;
+  semester: number | null;
+  year: number | null;
+  academicYear: string;
+  isActive: boolean;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type InstallmentStatus = 'upcoming' | 'due' | 'overdue' | 'paid' | 'partial';
+
+export interface InstallmentRecord {
+  id?: string;
+  installmentNumber: number;
+  studentId: string;
+  feeStructureId: string;
+  feeCode: string;
+  feeName: string;
+  category: FeeCategory;
+  amount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  dueDate: Date;
+  paidDate: Date | null;
+  status: InstallmentStatus;
+  semester: number;
+  academicYear: string;
+  lateFine: number;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type PaymentMethod = 'cash' | 'card' | 'upi' | 'netbanking' | 'cheque' | 'dd' | 'online';
+export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
+
+export interface PaymentRecord {
+  id?: string;
+  receiptNumber: string;
+  studentId: string;
+  installmentId: string;
+  feeStructureId: string;
+  amount: number;
+  method: PaymentMethod;
+  transactionId: string | null;
+  status: PaymentStatus;
+  semester: number;
+  academicYear: string;
+  paidAt: Date;
+  collectedBy: string | null;
+  remarks: string | null;
+  createdAt: Date;
+}
+
+export interface ReceiptRecord {
+  id?: string;
+  receiptNumber: string;
+  studentId: string;
+  studentName: string;
+  paymentId: string;
+  installmentId: string;
+  feeCode: string;
+  feeName: string;
+  amount: number;
+  totalPaid: number;
+  remainingAmount: number;
+  method: PaymentMethod;
+  transactionId: string | null;
+  semester: number;
+  academicYear: string;
+  generatedAt: Date;
+  collectedBy: string | null;
+  notes: string | null;
+}
+
+export type ScholarshipType = 'merit' | 'need_based' | 'sports' | 'government' | 'institutional' | 'other';
+export type ScholarshipStatus = 'active' | 'expired' | 'revoked';
+
+export interface ScholarshipRecord {
+  id?: string;
+  studentId: string;
+  scholarshipName: string;
+  type: ScholarshipType;
+  amount: number;
+  percentage: number | null;
+  provider: string;
+  validFrom: Date;
+  validUntil: Date;
+  semester: number | null;
+  academicYear: string;
+  status: ScholarshipStatus;
+  appliedAmount: number;
+  reason: string | null;
+  approvedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type FineReason = 'late_payment' | 'absenteeism' | 'damage' | 'library_overdue' | 'discipline' | 'other';
+
+export interface FineRecord {
+  id?: string;
+  studentId: string;
+  reason: FineReason;
+  description: string;
+  amount: number;
+  waivedAmount: number;
+  netAmount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  dueDate: Date;
+  paidDate: Date | null;
+  status: 'pending' | 'paid' | 'partial' | 'waived';
+  installmentId: string | null;
+  semester: number;
+  academicYear: string;
+  imposedBy: string | null;
+  waivedBy: string | null;
+  waiverReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PendingAmountRecord {
+  studentId: string;
+  totalPending: number;
+  overdueAmount: number;
+  upcomingAmount: number;
+  fineAmount: number;
+  scholarshipCredit: number;
+  netPayable: number;
+  installmentCount: number;
+  overdueCount: number;
+  nextDueDate: Date | null;
+  nextDueAmount: number | null;
+}
+
+export interface PaymentHistoryRecord {
+  payments: PaymentRecord[];
+  totalPaid: number;
+  totalRefunded: number;
+  netPaid: number;
+  totalTransactions: number;
+  byMethod: Record<PaymentMethod, number>;
+}
+
+export type AssignmentStatus = 'draft' | 'published' | 'closed';
+
+export interface AssignmentRecord {
+  id?: string;
+  title: string;
+  description: string;
+  subject: string;
+  department: string;
+  semester: number;
+  academicYear: string;
+  createdBy: string;
+  facultyName: string;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  dueDate: Date;
+  maxMarks: number;
+  passingMarks: number;
+  status: AssignmentStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type SubmissionStatus = 'submitted' | 'graded' | 'returned' | 'resubmitted';
+
+export interface AssignmentSubmissionRecord {
+  id?: string;
+  assignmentId: string;
+  studentId: string;
+  studentName: string;
+  submissionDate: Date;
+  isLate: boolean;
+  latePenalty: number;
+  fileUrl: string | null;
+  fileName: string | null;
+  status: SubmissionStatus;
+  marks: number | null;
+  grade: string | null;
+  feedback: string | null;
+  gradedBy: string | null;
+  gradedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}

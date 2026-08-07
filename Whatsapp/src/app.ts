@@ -23,6 +23,7 @@ import announcementRoutes from './modules/announcements/announcement.routes.js';
 import studentRoutes from './modules/students/students.routes.js';
 import parentRoutes from './modules/parents/parent.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
+import assignmentRoutes from './modules/assignments/assignment.routes.js';
 import { createAIRoutes } from './modules/ai/index.js';
 import { getAIService } from './modules/ai/index.js';
 
@@ -65,7 +66,8 @@ app.use(`${API_PREFIX}/results`, resultRoutes);
   app.use(`${API_PREFIX}/announcements`, announcementRoutes);
   app.use(`${API_PREFIX}/students`, studentRoutes);
   app.use(`${API_PREFIX}/parents`, parentRoutes);
-  app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
+app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
+  app.use(`${API_PREFIX}/assignments`, assignmentRoutes);
   app.use(`${API_PREFIX}/ai`, createAIRoutes(getAIService()));
 
   app.use(notFoundHandler);
