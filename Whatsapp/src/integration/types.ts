@@ -45,9 +45,48 @@ export interface ResultData {
   totalMarks: number;
 }
 
+export interface DetailedResultData {
+  subjectCode: string;
+  subjectName: string;
+  semester: number;
+  internalMarks: number | null;
+  externalMarks: number | null;
+  assignmentMarks: number | null;
+  labMarks: number | null;
+  totalMarks: number;
+  totalMax: number;
+  percentage: number;
+  credits: number;
+  grade: string;
+  gradePoints: number;
+}
+
+export interface SemesterGpaData {
+  semester: number;
+  academicYear: string;
+  gpa: number;
+  totalCredits: number;
+  earnedCredits: number;
+  subjectCount: number;
+}
+
+export interface CgpaData {
+  cgpa: number;
+  totalCredits: number;
+  earnedCredits: number;
+  totalSubjects: number;
+  semesters: SemesterGpaData[];
+}
+
 export interface ResultResult {
   results: ResultData[];
   cgpa: number;
+  hasData: boolean;
+}
+
+export interface DetailedResultResult {
+  results: DetailedResultData[];
+  cgpa: CgpaData;
   hasData: boolean;
 }
 
@@ -74,6 +113,7 @@ export interface StudentProfileResult {
   fees: FeeResult;
   schedule: ScheduleResult;
   results: ResultResult;
+  detailedResults: DetailedResultResult;
   parent: {
     id: string;
     fullName: string;
@@ -85,6 +125,7 @@ export interface StudentProfileResult {
     attendancePercentage: number;
     pendingFeeAmount: number;
     cgpa: number;
+    overallCgpa: number;
     todayClassCount: number;
   };
   status: {
@@ -92,6 +133,7 @@ export interface StudentProfileResult {
     hasFees: boolean;
     hasSchedule: boolean;
     hasResults: boolean;
+    hasDetailedResults: boolean;
     hasParent: boolean;
   };
 }

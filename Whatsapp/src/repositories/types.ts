@@ -88,6 +88,74 @@ export interface ResultRecord {
   cgpa: number;
 }
 
+export interface DetailedResultRecord {
+  id?: string;
+  studentId: string;
+  subjectCode: string;
+  subjectName: string;
+  semester: number;
+  academicYear: string;
+  internalMarks: number | null;
+  internalMax: number;
+  externalMarks: number | null;
+  externalMax: number;
+  assignmentMarks: number | null;
+  assignmentMax: number;
+  labMarks: number | null;
+  labMax: number;
+  totalMarks: number;
+  totalMax: number;
+  percentage: number;
+  credits: number;
+  grade: string;
+  gradePoints: number;
+  isPublished: boolean;
+  isAbsent: boolean;
+  remarks: string | null;
+}
+
+export interface SemesterGpaResult {
+  semester: number;
+  academicYear: string;
+  gpa: number;
+  totalCredits: number;
+  earnedCredits: number;
+  subjectCount: number;
+  subjects: Array<{
+    subjectCode: string;
+    subjectName: string;
+    credits: number;
+    totalMarks: number;
+    totalMax: number;
+    percentage: number;
+    grade: string;
+    gradePoints: number;
+  }>;
+}
+
+export interface CgpaResult {
+  studentId: string;
+  cgpa: number;
+  totalCredits: number;
+  earnedCredits: number;
+  totalSubjects: number;
+  semesters: SemesterGpaResult[];
+}
+
+export interface SubjectResultStats {
+  subjectCode: string;
+  subjectName: string;
+  semester: number;
+  academicYear: string;
+  studentCount: number;
+  averagePercentage: number;
+  highestPercentage: number;
+  lowestPercentage: number;
+  passCount: number;
+  failCount: number;
+  passPercentage: number;
+}
+
 export interface UserRecord {
   id: string;
   fullName: string;

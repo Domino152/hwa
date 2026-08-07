@@ -4,6 +4,7 @@ import type { AttendanceIntegrationService } from '../../src/integration/service
 import type { FeeIntegrationService } from '../../src/integration/services/fee.service.js';
 import type { ScheduleIntegrationService } from '../../src/integration/services/schedule.service.js';
 import type { ResultIntegrationService } from '../../src/integration/services/result.service.js';
+import type { DetailedResultIntegrationService } from '../../src/integration/services/detailed-result.service.js';
 import type { IUserRepository } from '../../src/repositories/user.repository.js';
 
 vi.mock('../../src/integration/index.js', () => ({
@@ -13,6 +14,11 @@ vi.mock('../../src/integration/index.js', () => ({
     fees: { getByStudentId: vi.fn().mockResolvedValue({ fee: null, hasData: false }) },
     schedule: { getByStudent: vi.fn().mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false }) },
     results: { getByStudentId: vi.fn().mockResolvedValue({ results: [], cgpa: 0, hasData: false }) },
+    detailedResults: { getByStudentId: vi.fn().mockResolvedValue({
+      results: [],
+      cgpa: { cgpa: 0, totalCredits: 0, earnedCredits: 0, totalSubjects: 0, semesters: [] },
+      hasData: false,
+    }) },
     publicInformation: {
       resolveCategory: vi.fn().mockReturnValue('about_hits'),
       getByCategory: vi.fn().mockResolvedValue({ entries: [], category: 'about_hits', hasData: false }),
@@ -44,6 +50,10 @@ const mockResults = {
   getByStudentId: vi.fn(),
 } as unknown as ResultIntegrationService;
 
+const mockDetailedResults = {
+  getByStudentId: vi.fn(),
+} as unknown as DetailedResultIntegrationService;
+
 const mockUser = {
   id: 'user123',
   fullName: 'Arjun Sharma',
@@ -66,12 +76,28 @@ const mockParent = {
   whatsappNumber: '919876543210',
 };
 
+function setupEmptyMocks(): void {
+  vi.mocked(mockDetailedResults.getByStudentId).mockResolvedValue({
+    results: [],
+    cgpa: { cgpa: 0, totalCredits: 0, earnedCredits: 0, totalSubjects: 0, semesters: [] },
+    hasData: false,
+  });
+}
+
 describe('ProfileService', () => {
   let service: ProfileService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new ProfileService(mockUserRepo, mockAttendance, mockFees, mockSchedule, mockResults);
+    service = new ProfileService(
+      mockUserRepo,
+      mockAttendance,
+      mockFees,
+      mockSchedule,
+      mockResults,
+      mockDetailedResults,
+    );
+    setupEmptyMocks();
   });
 
   it('returns full profile for valid student with all data', async () => {
@@ -97,6 +123,16 @@ describe('ProfileService', () => {
       cgpa: 9.1,
       hasData: true,
     });
+    vi.mocked(mockDetailedResults.getByStudentId).mockResolvedValue({
+      results: [{
+        subjectCode: 'CS401', subjectName: 'DBMS', semester: 1,
+        internalMarks: 35, externalMarks: 55, assignmentMarks: 9, labMarks: null,
+        totalMarks: 99, totalMax: 110, percentage: 90, credits: 4,
+        grade: 'O', gradePoints: 10,
+      }],
+      cgpa: { cgpa: 9.5, totalCredits: 4, earnedCredits: 4, totalSubjects: 1, semesters: [{ semester: 1, academicYear: '2025-26', gpa: 10, totalCredits: 4, earnedCredits: 4, subjectCount: 1 }] },
+      hasData: true,
+    });
 
     const result = await service.getStudentProfile('22CSE001');
 
@@ -111,11 +147,13 @@ describe('ProfileService', () => {
     expect(result.summary.attendancePercentage).toBe(90);
     expect(result.summary.pendingFeeAmount).toBe(15000);
     expect(result.summary.cgpa).toBe(9.1);
+    expect(result.summary.overallCgpa).toBe(9.5);
     expect(result.summary.todayClassCount).toBe(1);
     expect(result.status.hasAttendance).toBe(true);
     expect(result.status.hasFees).toBe(true);
     expect(result.status.hasSchedule).toBe(true);
     expect(result.status.hasResults).toBe(true);
+    expect(result.status.hasDetailedResults).toBe(true);
     expect(result.status.hasParent).toBe(true);
   });
 
@@ -130,6 +168,7 @@ describe('ProfileService', () => {
     expect(result.summary.attendancePercentage).toBe(0);
     expect(result.summary.pendingFeeAmount).toBe(0);
     expect(result.summary.cgpa).toBe(0);
+    expect(result.summary.overallCgpa).toBe(0);
     expect(result.summary.todayClassCount).toBe(0);
     expect(result.status.hasAttendance).toBe(false);
     expect(result.status.hasFees).toBe(false);
@@ -283,7 +322,7 @@ describe('ProfileService', () => {
     expect(result.results.results).toHaveLength(0);
   });
 
-  it('computes currentSemester from results', async () => {
+  it('computes currentSemester from detailed results', async () => {
     vi.mocked(mockUserRepo.findByStudentId).mockResolvedValue(mockUser);
     vi.mocked(mockUserRepo.findParentByStudentId).mockResolvedValue(null);
 
@@ -297,18 +336,29 @@ describe('ProfileService', () => {
       entries: [], dayOfWeek: 'Monday', hasData: false,
     });
     vi.mocked(mockResults.getByStudentId).mockResolvedValue({
-      results: [
-        { subject: 'DBMS', grade: 'A', marksObtained: 92, totalMarks: 100 },
-        { subject: 'Java', grade: 'A+', marksObtained: 96, totalMarks: 100 },
-        { subject: 'OS', grade: 'B+', marksObtained: 87, totalMarks: 100 },
-      ],
-      cgpa: 9.1,
+      results: [],
+      cgpa: 0,
+      hasData: false,
+    });
+    vi.mocked(mockDetailedResults.getByStudentId).mockResolvedValue({
+      results: [],
+      cgpa: {
+        cgpa: 9.0,
+        totalCredits: 20,
+        earnedCredits: 20,
+        totalSubjects: 5,
+        semesters: [
+          { semester: 1, academicYear: '2024-25', gpa: 9.0, totalCredits: 20, earnedCredits: 20, subjectCount: 5 },
+          { semester: 2, academicYear: '2024-25', gpa: 9.0, totalCredits: 20, earnedCredits: 20, subjectCount: 5 },
+          { semester: 3, academicYear: '2025-26', gpa: 9.0, totalCredits: 20, earnedCredits: 20, subjectCount: 5 },
+        ],
+      },
       hasData: true,
     });
 
     const result = await service.getStudentProfile('22CSE001');
 
-    expect(result.currentSemester).toBe(1);
+    expect(result.currentSemester).toBe(3);
   });
 
   it('verifies all sub-services are called with correct arguments', async () => {
@@ -340,6 +390,7 @@ describe('ProfileService', () => {
       section: 'A',
     });
     expect(mockResults.getByStudentId).toHaveBeenCalledWith('22CSE001');
+    expect(mockDetailedResults.getByStudentId).toHaveBeenCalledWith('22CSE001');
   });
 
   it('cross-checks status flags with hasData from each service', async () => {

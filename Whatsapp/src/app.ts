@@ -16,6 +16,7 @@ import authRoutes from './modules/auth/auth.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
 import feeRoutes from './modules/fees/fee.routes.js';
 import resultRoutes from './modules/results/result.routes.js';
+import detailedResultRoutes from './modules/detailed-results/detailed-result.routes.js';
 import scheduleRoutes from './modules/schedule/schedule.routes.js';
 import subjectRoutes from './modules/subjects/subject.routes.js';
 import announcementRoutes from './modules/announcements/announcement.routes.js';
@@ -57,7 +58,8 @@ export function createApp(): express.Express {
   app.use(`${API_PREFIX}/auth`, authRoutes);
   app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
   app.use(`${API_PREFIX}/fees`, feeRoutes);
-  app.use(`${API_PREFIX}/results`, resultRoutes);
+app.use(`${API_PREFIX}/results`, resultRoutes);
+  app.use(`${API_PREFIX}/detailed-results`, detailedResultRoutes);
   app.use(`${API_PREFIX}/schedule`, scheduleRoutes);
   app.use(`${API_PREFIX}/subjects`, subjectRoutes);
   app.use(`${API_PREFIX}/announcements`, announcementRoutes);
