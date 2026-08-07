@@ -266,7 +266,8 @@ describe('Subjects API', () => {
       });
       await Schedule.create({
         department: 'CSE', year: 4, section: 'A', dayOfWeek: 'Monday',
-        timeSlot: '09:00-10:00', subject: 'CS401', room: '301',
+        periodNumber: 1, timeSlot: '09:00-10:00', subject: 'CS401',
+        faculty: 'Dr. Sharma', room: '301',
         type: 'lecture', semester: 7, academicYear: '2025-26',
       });
 

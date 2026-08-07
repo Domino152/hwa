@@ -1,30 +1,28 @@
-import type { IScheduleRepository } from '../../repositories/schedule.repository.js';
+import type { ScheduleService } from '../../modules/schedule/schedule.service.js';
 import type { ScheduleResult } from '../types.js';
 
-const DAYS: string[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
 export class ScheduleIntegrationService {
-  constructor(private readonly repo: IScheduleRepository) {}
+  constructor(private readonly scheduleService: ScheduleService) {}
 
   async getByStudent(user: { department: string; year: number; section: string }): Promise<ScheduleResult> {
-    const today = DAYS[new Date().getDay()] ?? 'Monday';
+    const academicYear = `${new Date().getFullYear()}-${String(new Date().getFullYear() + 1).slice(2)}`;
 
-    const entries = await this.repo.findScheduleByClass({
+    const result = await this.scheduleService.getToday({
       department: user.department,
       year: user.year,
       section: user.section,
-      dayOfWeek: today,
+      academicYear,
     });
 
     return {
-      entries: entries.map((e) => ({
+      entries: result.entries.map((e) => ({
         timeSlot: e.timeSlot,
         subject: e.subject,
         room: e.room,
         type: e.type,
       })),
-      dayOfWeek: today,
-      hasData: entries.length > 0,
+      dayOfWeek: result.dayOfWeek,
+      hasData: result.hasData,
     };
   }
 }

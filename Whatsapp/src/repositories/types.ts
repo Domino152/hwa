@@ -43,10 +43,39 @@ export interface ScheduleRecord {
   year: number;
   section: string;
   dayOfWeek: string;
+  periodNumber: number;
   timeSlot: string;
   subject: string;
+  faculty: string;
   room: string;
   type: 'lecture' | 'lab' | 'tutorial';
+  semester: number;
+  academicYear: string;
+}
+
+export interface HolidayOverrideRecord {
+  id?: string;
+  department: string;
+  year: number;
+  section: string;
+  date: Date;
+  reason: string;
+  academicYear: string;
+}
+
+export interface CurrentClassResult {
+  entry: ScheduleRecord;
+  startedAt: Date;
+  endsAt: Date;
+  elapsedMinutes: number;
+  remainingMinutes: number;
+}
+
+export interface NextClassResult {
+  entry: ScheduleRecord;
+  startsAt: Date;
+  waitMinutes: number;
+  isTomorrow: boolean;
 }
 
 export interface ResultRecord {

@@ -269,14 +269,16 @@ describe('MongoFeeRepository', () => {
 describe('MongoScheduleRepository', () => {
   const repo = new MongoScheduleRepository();
 
-  it('findScheduleByClass returns schedule sorted by timeSlot', async () => {
+  it('findScheduleByClass returns schedule sorted by periodNumber', async () => {
     await Schedule.create({
       department: 'CSE',
       year: 4,
       section: 'A',
       dayOfWeek: 'Monday',
+      periodNumber: 2,
       timeSlot: '10:00-11:00',
       subject: 'DBMS',
+      faculty: 'Dr. Smith',
       room: 'Room 101',
       type: 'lecture',
       semester: 1,
@@ -287,8 +289,10 @@ describe('MongoScheduleRepository', () => {
       year: 4,
       section: 'A',
       dayOfWeek: 'Monday',
+      periodNumber: 1,
       timeSlot: '09:00-10:00',
       subject: 'OS',
+      faculty: 'Dr. Jones',
       room: 'Room 102',
       type: 'lecture',
       semester: 1,
@@ -302,8 +306,8 @@ describe('MongoScheduleRepository', () => {
       dayOfWeek: 'Monday',
     });
     expect(results).toHaveLength(2);
-    expect(results[0].timeSlot).toBe('09:00-10:00');
-    expect(results[1].timeSlot).toBe('10:00-11:00');
+    expect(results[0].periodNumber).toBe(1);
+    expect(results[1].periodNumber).toBe(2);
   });
 
   it('findScheduleByClass returns empty for mismatched day', async () => {
@@ -312,8 +316,10 @@ describe('MongoScheduleRepository', () => {
       year: 4,
       section: 'A',
       dayOfWeek: 'Monday',
+      periodNumber: 1,
       timeSlot: '09:00-10:00',
       subject: 'DBMS',
+      faculty: 'Dr. Smith',
       room: 'Room 101',
       type: 'lecture',
       semester: 1,
@@ -335,8 +341,10 @@ describe('MongoScheduleRepository', () => {
       year: 3,
       section: 'B',
       dayOfWeek: 'Wednesday',
+      periodNumber: 4,
       timeSlot: '14:00-15:00',
       subject: 'Algorithms',
+      faculty: 'Dr. Lee',
       room: 'Lab 3',
       type: 'lab',
       semester: 1,
@@ -354,10 +362,14 @@ describe('MongoScheduleRepository', () => {
       year: 3,
       section: 'B',
       dayOfWeek: 'Wednesday',
+      periodNumber: 4,
       timeSlot: '14:00-15:00',
       subject: 'Algorithms',
+      faculty: 'Dr. Lee',
       room: 'Lab 3',
       type: 'lab',
+      semester: 1,
+      academicYear: '2025-26',
     });
   });
 });

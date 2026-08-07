@@ -14,6 +14,7 @@ import { PublicInformationService } from './services/public-information.service.
 import { ProfileService } from './services/profile.service.js';
 import { StudentIntegrationService } from './services/student-integration.service.js';
 import { IntegrationService } from './integration.service.js';
+import { ScheduleService } from '../modules/schedule/schedule.service.js';
 
 /**
  * Composition Root
@@ -35,7 +36,8 @@ const studentRepo = new MongoStudentRepository();
 // -- Services (business logic) ---------------------------------------
 const attendanceService = new AttendanceIntegrationService(attendanceRepo);
 const feeService = new FeeIntegrationService(feeRepo);
-const scheduleService = new ScheduleIntegrationService(scheduleRepo);
+const scheduleDomainService = new ScheduleService(scheduleRepo);
+const scheduleService = new ScheduleIntegrationService(scheduleDomainService);
 const resultService = new ResultIntegrationService(resultRepo);
 const publicInformationService = new PublicInformationService(publicContentRepo);
 const profileService = new ProfileService(userRepo, attendanceService, feeService, scheduleService, resultService);
