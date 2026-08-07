@@ -16,6 +16,26 @@ router.get(
 );
 
 router.get(
+  '/code/:code/prerequisites',
+  asyncHandler(subjectController.getPrerequisites),
+);
+
+router.get(
+  '/code/:code/schedule',
+  asyncHandler(subjectController.getSchedule),
+);
+
+router.get(
+  '/code/:code/results',
+  asyncHandler(subjectController.getResults),
+);
+
+router.get(
+  '/code/:code/validate-prerequisites',
+  asyncHandler(subjectController.validatePrerequisites),
+);
+
+router.get(
   '/code/:code',
   asyncHandler(subjectController.getByCode),
 );

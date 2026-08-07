@@ -7,6 +7,8 @@ export interface ISubject extends Document {
   semester: number;
   credits: number;
   type: 'theory' | 'lab' | 'elective';
+  faculty: string;
+  prerequisites: string[];
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -20,11 +22,15 @@ const subjectSchema = new Schema<ISubject>(
     semester: { type: Number, required: true, min: 1, max: 8 },
     credits: { type: Number, required: true, min: 1, max: 6 },
     type: { type: String, enum: ['theory', 'lab', 'elective'], required: true },
+    faculty: { type: String, required: true, trim: true, default: 'TBA' },
+    prerequisites: [{ type: String, trim: true, uppercase: true }],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },
 );
 
 subjectSchema.index({ department: 1, semester: 1 });
+subjectSchema.index({ faculty: 1 });
+subjectSchema.index({ prerequisites: 1 });
 
 export const Subject = mongoose.model<ISubject>('Subject', subjectSchema);

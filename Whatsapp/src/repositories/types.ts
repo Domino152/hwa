@@ -92,6 +92,8 @@ export interface SubjectRecord {
   semester: number;
   credits: number;
   type: 'theory' | 'lab' | 'elective';
+  faculty: string;
+  prerequisites: string[];
   isActive: boolean;
 }
 
