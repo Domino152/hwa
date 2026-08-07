@@ -14,6 +14,7 @@ import NodeCache from '@cacheable/node-cache';
 import { config } from '../../config/index.js';
 import { emitToAll } from '../../sockets/index.js';
 import logger from '../../shared/utils/logger.js';
+import { ServiceUnavailableError } from '../../shared/utils/errors.js';
 import { extractPhoneFromJid } from './utils/phone.js';
 import { InboxService } from './inbox.service.js';
 import { Conversation } from '../../database/models/Conversation.js';
@@ -216,7 +217,7 @@ export class ChatService {
     requestId: string,
   ): Promise<{ messageId: string }> {
     if (!this.sock || this.state !== 'open') {
-      throw new Error('WhatsApp not connected');
+      throw new ServiceUnavailableError('WhatsApp not connected');
     }
 
     const phone = extractPhoneFromJid(jid);

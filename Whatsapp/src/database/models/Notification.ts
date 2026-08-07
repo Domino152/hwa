@@ -56,8 +56,8 @@ const notificationSchema = new Schema<INotification>(
       index: true,
     },
     recipient: {
-      userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-      studentId: { type: String, required: true, index: true },
+      userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+      studentId: { type: String, required: true },
       role: { type: String, enum: ['student', 'parent'], required: true },
       phone: { type: String, default: null },
     },
@@ -71,7 +71,6 @@ const notificationSchema = new Schema<INotification>(
       enum: ['pending', 'queued', 'sent', 'failed', 'cancelled'],
       required: true,
       default: 'pending',
-      index: true,
     },
     priority: {
       type: String,
@@ -100,7 +99,7 @@ const notificationSchema = new Schema<INotification>(
 notificationSchema.index({ status: 1, priority: 1, scheduledFor: 1 });
 notificationSchema.index({ 'recipient.userId': 1, status: 1 });
 notificationSchema.index({ 'recipient.studentId': 1, type: 1 });
-notificationSchema.index({ status: 1, scheduledFor: 1 });
+notificationSchema.index({ 'recipient.studentId': 1, status: 1 });
 
 export const Notification = mongoose.model<INotification>(
   'Notification',

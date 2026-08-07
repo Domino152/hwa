@@ -55,7 +55,6 @@ const publicContentSchema = new Schema<IPublicContent>(
       type: String,
       enum: [...PUBLIC_CONTENT_CATEGORIES],
       required: true,
-      index: true,
     },
     title: { type: String, required: true, trim: true },
     content: { type: String, required: true, trim: true },

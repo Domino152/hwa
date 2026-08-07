@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import type { ChatService } from './chat.service.js';
 import { sendSuccess } from '../../shared/utils/response.js';
-import { AppError } from '../../shared/utils/errors.js';
+import { AppError, ValidationError } from '../../shared/utils/errors.js';
 import { normalizePhoneNumber, formatJid } from './utils/phone.js';
 import { sendMessageSchema } from './schemas.js';
 
@@ -24,7 +24,7 @@ export class WhatsAppController {
   sendMessage = async (req: Request, res: Response): Promise<void> => {
     const parsed = sendMessageSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw new AppError('Invalid request body', 400, 'VALIDATION_ERROR');
+      throw new ValidationError('Invalid request body', parsed.error.format());
     }
 
     const { phone, message } = parsed.data;

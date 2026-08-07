@@ -24,7 +24,7 @@ export interface IUserModel extends Model<IUser> {
 const userSchema = new Schema<IUser, IUserModel>(
   {
     fullName: { type: String, required: true, trim: true },
-    username: { type: String, required: true, unique: true, trim: true, index: true },
+    username: { type: String, required: true, unique: true, trim: true },
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ['student', 'parent'], required: true },
     studentId: { type: String, required: true, trim: true, index: true },

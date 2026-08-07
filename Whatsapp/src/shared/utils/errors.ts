@@ -45,8 +45,23 @@ export class ConflictError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message: string = 'Forbidden') {
+    super(message, 403, 'FORBIDDEN');
+  }
+}
+
 export class ServiceUnavailableError extends AppError {
   constructor(message: string = 'Service temporarily unavailable') {
     super(message, 503, 'SERVICE_UNAVAILABLE');
+  }
+}
+
+export class DatabaseError extends AppError {
+  public readonly details: unknown;
+
+  constructor(message: string = 'Database operation failed', details?: unknown) {
+    super(message, 500, 'DATABASE_ERROR', false);
+    this.details = details;
   }
 }

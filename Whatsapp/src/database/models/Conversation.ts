@@ -16,11 +16,11 @@ export interface IConversation extends Document {
 
 const conversationSchema = new Schema<IConversation>(
   {
-    phone: { type: String, required: true, unique: true, index: true },
+    phone: { type: String, required: true, unique: true },
     jid: { type: String, required: true },
     contactName: { type: String, required: false },
     lastMessage: { type: String, required: true, default: '' },
-    lastMessageAt: { type: Date, required: true, default: Date.now, index: true },
+    lastMessageAt: { type: Date, required: true, default: Date.now },
     lastMessageDirection: {
       type: String,
       enum: ['incoming', 'outgoing'],

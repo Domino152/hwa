@@ -16,7 +16,7 @@ export interface IFee extends Document {
 
 const feeSchema = new Schema<IFee>(
   {
-    studentId: { type: String, required: true, index: true },
+    studentId: { type: String, required: true },
     feeType: { type: String, required: true, trim: true },
     totalFee: { type: Number, required: true, min: 0 },
     paidAmount: { type: Number, required: true, default: 0, min: 0 },

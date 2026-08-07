@@ -16,7 +16,7 @@ export interface IResult extends Document {
 
 const resultSchema = new Schema<IResult>(
   {
-    studentId: { type: String, required: true, index: true },
+    studentId: { type: String, required: true },
     semester: { type: Number, required: true, min: 1 },
     subject: { type: String, required: true, trim: true },
     marksObtained: { type: Number, required: true, min: 0 },

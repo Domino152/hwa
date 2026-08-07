@@ -14,7 +14,7 @@ export interface IAttendance extends Document {
 
 const attendanceSchema = new Schema<IAttendance>(
   {
-    studentId: { type: String, required: true, index: true },
+    studentId: { type: String, required: true },
     subject: { type: String, required: true, trim: true },
     totalClasses: { type: Number, required: true, min: 0 },
     attendedClasses: { type: Number, required: true, min: 0 },
