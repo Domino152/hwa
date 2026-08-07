@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 import { User } from '../../../src/database/models/User.js';
+import { Student } from '../../../src/database/models/Student.js';
 import { signToken } from '../../../src/modules/auth/token.service.js';
 
 let mongo: MongoMemoryServer;
@@ -54,10 +55,10 @@ beforeEach(async () => {
 
 describe('Students API', () => {
   let studentToken: string;
-  let parentToken: string;
+  let studentMongoId: string;
 
   beforeEach(async () => {
-    const student = await User.create({
+    const studentUser = await User.create({
       fullName: 'Arjun Sharma',
       username: '22CSE001',
       passwordHash: '$2b$10$hashedpw',
@@ -68,61 +69,69 @@ describe('Students API', () => {
       year: 4,
       section: 'A',
     });
-    studentToken = signToken({ userId: String(student._id), username: '22CSE001', role: 'student' });
+    studentToken = signToken({ userId: String(studentUser._id), username: '22CSE001', role: 'student' });
 
-    const parent = await User.create({
-      fullName: 'Raj Parent',
-      username: 'P22CSE001',
-      passwordHash: '$2b$10$hashedpw',
-      role: 'parent',
+    const student = await Student.create({
+      userId: studentUser._id,
       studentId: '22CSE001',
-      whatsappNumber: '912222222222',
+      registerNumber: 'REG22CSE001',
+      rollNumber: '001',
+      fullName: 'Arjun Sharma',
+      email: 'arjun@hits.ac.in',
+      phone: '917530063885',
+      gender: 'male',
+      dateOfBirth: new Date('2003-05-15'),
       department: 'CSE',
-      year: 4,
+      program: 'B.Tech',
+      semester: 7,
       section: 'A',
+      batch: '2022-2026',
+      advisor: 'Dr. Sharma',
+      whatsappNumber: '917530063885',
+      status: 'active',
+      isActive: true,
     });
-    parentToken = signToken({ userId: String(parent._id), username: 'P22CSE001', role: 'parent' });
+    studentMongoId = String(student._id);
   });
 
-  describe('GET /api/v1/students/phone/:phone', () => {
-    it('returns student by phone number', async () => {
+  describe('GET /api/v1/students/student-id/:studentId', () => {
+    it('returns student by studentId', async () => {
       const res = await request(app)
-        .get('/api/v1/students/phone/917530063885')
+        .get('/api/v1/students/student-id/22CSE001')
         .set('Authorization', `Bearer ${studentToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.data.studentId).toBe('22CSE001');
     });
 
-    it('returns 404 for unknown phone', async () => {
+    it('returns 404 for unknown studentId', async () => {
       const res = await request(app)
-        .get('/api/v1/students/phone/999999999999')
+        .get('/api/v1/students/student-id/UNKNOWN')
         .set('Authorization', `Bearer ${studentToken}`);
 
       expect(res.status).toBe(404);
     });
   });
 
-  describe('GET /api/v1/students/:studentId/profile', () => {
-    it('returns student profile', async () => {
+  describe('GET /api/v1/students/:id', () => {
+    it('returns student by MongoDB _id', async () => {
       const res = await request(app)
-        .get('/api/v1/students/22CSE001/profile')
+        .get(`/api/v1/students/${studentMongoId}`)
         .set('Authorization', `Bearer ${studentToken}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.data.student.studentId).toBe('22CSE001');
-      expect(res.body.data.hasData).toBe(true);
+      expect(res.body.data.studentId).toBe('22CSE001');
     });
   });
 
   describe('GET /api/v1/students/search', () => {
-    it('searches students by class', async () => {
+    it('searches students by department', async () => {
       const res = await request(app)
-        .get('/api/v1/students/search?department=CSE&year=4&section=A')
+        .get('/api/v1/students/search?department=CSE')
         .set('Authorization', `Bearer ${studentToken}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.data.students).toHaveLength(1);
+      expect(res.body.data.data).toHaveLength(1);
     });
   });
 });

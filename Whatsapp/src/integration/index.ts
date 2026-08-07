@@ -4,6 +4,7 @@ import { MongoScheduleRepository } from '../repositories/mongodb/schedule.reposi
 import { MongoResultRepository } from '../repositories/mongodb/result.repository.js';
 import { MongoUserRepository } from '../repositories/mongodb/user.repository.js';
 import { MongoPublicContentRepository } from '../repositories/mongodb/public-content.repository.js';
+import { MongoStudentRepository } from '../repositories/mongodb/student.repository.js';
 
 import { AttendanceIntegrationService } from './services/attendance.service.js';
 import { FeeIntegrationService } from './services/fee.service.js';
@@ -11,6 +12,7 @@ import { ScheduleIntegrationService } from './services/schedule.service.js';
 import { ResultIntegrationService } from './services/result.service.js';
 import { PublicInformationService } from './services/public-information.service.js';
 import { ProfileService } from './services/profile.service.js';
+import { StudentIntegrationService } from './services/student-integration.service.js';
 import { IntegrationService } from './integration.service.js';
 
 /**
@@ -21,23 +23,25 @@ import { IntegrationService } from './integration.service.js';
  * implementations and change only this file.
  */
 
-// ── Repositories (data access) ──────────────────────────────────────
+// -- Repositories (data access) --------------------------------------
 const attendanceRepo = new MongoAttendanceRepository();
 const feeRepo = new MongoFeeRepository();
 const scheduleRepo = new MongoScheduleRepository();
 const resultRepo = new MongoResultRepository();
 const userRepo = new MongoUserRepository();
 const publicContentRepo = new MongoPublicContentRepository();
+const studentRepo = new MongoStudentRepository();
 
-// ── Services (business logic) ───────────────────────────────────────
+// -- Services (business logic) ---------------------------------------
 const attendanceService = new AttendanceIntegrationService(attendanceRepo);
 const feeService = new FeeIntegrationService(feeRepo);
 const scheduleService = new ScheduleIntegrationService(scheduleRepo);
 const resultService = new ResultIntegrationService(resultRepo);
 const publicInformationService = new PublicInformationService(publicContentRepo);
 const profileService = new ProfileService(userRepo, attendanceService, feeService, scheduleService, resultService);
+const studentIntegrationService = new StudentIntegrationService(studentRepo);
 
-// ── Integration facade (public API) ─────────────────────────────────
+// -- Integration facade (public API) ---------------------------------
 export const integration = new IntegrationService(
   attendanceService,
   feeService,
@@ -46,9 +50,11 @@ export const integration = new IntegrationService(
   publicInformationService,
   profileService,
   userRepo,
+  studentIntegrationService,
 );
 
 export { IntegrationService } from './integration.service.js';
+export { StudentIntegrationService } from './services/student-integration.service.js';
 export type {
   AttendanceData,
   AttendanceResult,

@@ -1,26 +1,88 @@
 import { Router } from 'express';
-import { studentController } from './index.js';
+import { StudentController } from './student.controller.js';
+import { studentService } from './index.js';
 import { authenticate } from '../auth/auth.middleware.js';
+import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../middleware/async-handler.js';
+import {
+  createStudentSchema,
+  updateStudentSchema,
+  studentQuerySchema,
+} from './student.schemas.js';
+
+const studentController = new StudentController(studentService);
 
 const router = Router();
 
 router.get(
   '/search',
   authenticate,
-  asyncHandler(studentController.searchStudents),
+  validate(studentQuerySchema, 'query'),
+  asyncHandler(studentController.search),
 );
 
 router.get(
-  '/phone/:phone',
+  '/count',
   authenticate,
-  asyncHandler(studentController.getByPhone),
+  validate(studentQuerySchema, 'query'),
+  asyncHandler(studentController.count),
 );
 
 router.get(
-  '/:studentId/profile',
+  '/department/:department',
   authenticate,
-  asyncHandler(studentController.getProfile),
+  asyncHandler(studentController.getByDepartment),
+);
+
+router.get(
+  '/class/:department/:semester/:section',
+  authenticate,
+  asyncHandler(studentController.getByClass),
+);
+
+router.get(
+  '/student-id/:studentId',
+  authenticate,
+  asyncHandler(studentController.getByStudentId),
+);
+
+router.get(
+  '/register/:registerNumber',
+  authenticate,
+  asyncHandler(studentController.getByRegisterNumber),
+);
+
+router.get(
+  '/',
+  authenticate,
+  validate(studentQuerySchema, 'query'),
+  asyncHandler(studentController.list),
+);
+
+router.get(
+  '/:id',
+  authenticate,
+  asyncHandler(studentController.getById),
+);
+
+router.post(
+  '/',
+  authenticate,
+  validate(createStudentSchema),
+  asyncHandler(studentController.create),
+);
+
+router.put(
+  '/:id',
+  authenticate,
+  validate(updateStudentSchema),
+  asyncHandler(studentController.update),
+);
+
+router.delete(
+  '/:id',
+  authenticate,
+  asyncHandler(studentController.delete),
 );
 
 export default router;

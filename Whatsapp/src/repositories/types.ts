@@ -95,3 +95,29 @@ export interface AnnouncementRecord {
   createdBy: string;
   createdAt: Date;
 }
+
+export interface StudentRecord {
+  id: string;
+  userId: string;
+  studentId: string;
+  registerNumber: string;
+  rollNumber: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  gender: 'male' | 'female' | 'other';
+  dateOfBirth: Date;
+  department: string;
+  program: string;
+  semester: number;
+  section: string;
+  batch: string;
+  advisor: string;
+  parentId: string | null;
+  whatsappNumber: string | null;
+  parentWhatsappNumber: string | null;
+  status: 'active' | 'graduated' | 'suspended';
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}

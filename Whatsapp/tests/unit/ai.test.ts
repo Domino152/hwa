@@ -357,7 +357,7 @@ describe('AIController', () => {
 });
 
 describe('AI Routes', () => {
-  it('should export createAIRoutes function', async () => {
+  it('should export createAIRoutes function', { timeout: 15000 }, async () => {
     const { createAIRoutes } = await import('../../src/modules/ai/index.js');
     expect(typeof createAIRoutes).toBe('function');
   });

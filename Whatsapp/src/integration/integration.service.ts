@@ -4,13 +4,14 @@ import type { ScheduleIntegrationService } from './services/schedule.service.js'
 import type { ResultIntegrationService } from './services/result.service.js';
 import type { PublicInformationService } from './services/public-information.service.js';
 import type { ProfileService } from './services/profile.service.js';
+import type { StudentIntegrationService } from './services/student-integration.service.js';
 import type { IUserRepository } from '../repositories/user.repository.js';
 import type { UserData, StudentProfileResult } from './types.js';
 
 /**
  * IntegrationService is the single point of contact between the chatbot
  * and all backend data services. The chatbot never imports MongoDB models
- * directly â€” it always goes through this layer.
+ * directly — it always goes through this layer.
  *
  * All sub-services and repositories are injected via constructor.
  * The composition root in index.ts wires everything together.
@@ -24,6 +25,7 @@ export class IntegrationService {
     readonly publicInformation: PublicInformationService,
     readonly profile: ProfileService,
     private readonly userRepo: IUserRepository,
+    readonly students: StudentIntegrationService,
   ) {}
 
   /**
