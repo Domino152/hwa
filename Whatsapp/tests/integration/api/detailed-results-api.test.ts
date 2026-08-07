@@ -104,7 +104,7 @@ describe('Detailed Results API', () => {
       expect(res.body.data.totalMarks).toBe(99);
       expect(res.body.data.totalMax).toBe(110);
       expect(res.body.data.percentage).toBe(90);
-      expect(res.body.data.grade).toBe('O');
+      expect(res.body.data.grade).toBe('S');
       expect(res.body.data.gradePoints).toBe(10);
       expect(res.body.data.credits).toBe(4);
     });
@@ -175,7 +175,7 @@ describe('Detailed Results API', () => {
         internalMarks: 35, internalMax: 40, externalMarks: 55, externalMax: 60,
         assignmentMarks: 9, assignmentMax: 10, labMarks: null, labMax: 0,
         totalMarks: 99, totalMax: 110, percentage: 90, credits: 4,
-        grade: 'O', gradePoints: 10, isPublished: true, isAbsent: false,
+        grade: 'S', gradePoints: 10, isPublished: true, isAbsent: false,
       });
       await DetailedResult.create({
         studentId: '22CSE001', subjectCode: 'CS402', subjectName: 'OS',
@@ -202,7 +202,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10,
+        credits: 4, grade: 'S', gradePoints: 10,
       });
       await DetailedResult.create({
         studentId: '22CSE001', subjectCode: 'CS501', subjectName: 'Algo',
@@ -227,7 +227,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10,
+        credits: 4, grade: 'S', gradePoints: 10,
       });
       await DetailedResult.create({
         studentId: '22CSE001', subjectCode: 'CS402', subjectName: 'OS',
@@ -263,7 +263,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10,
+        credits: 4, grade: 'S', gradePoints: 10,
       });
       await DetailedResult.create({
         studentId: '22CSE001', subjectCode: 'CS402', subjectName: 'OS',
@@ -288,7 +288,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10,
+        credits: 4, grade: 'S', gradePoints: 10,
       });
 
       const res = await request(app)
@@ -306,7 +306,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10,
+        credits: 4, grade: 'S', gradePoints: 10,
       });
 
       const res = await request(app)
@@ -325,7 +325,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10,
+        credits: 4, grade: 'S', gradePoints: 10,
       });
       await DetailedResult.create({
         studentId: '22CSE002', subjectCode: 'CS401', subjectName: 'DBMS',
@@ -352,7 +352,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10,
+        credits: 4, grade: 'S', gradePoints: 10,
       });
 
       const res = await request(app)
@@ -378,7 +378,7 @@ describe('Detailed Results API', () => {
         studentId: '22CSE001', subjectCode: 'CS401', subjectName: 'DBMS',
         semester: 1, academicYear: '2025-26',
         internalMarks: 35, totalMarks: 99, totalMax: 110, percentage: 90,
-        credits: 4, grade: 'O', gradePoints: 10, isPublished: false,
+        credits: 4, grade: 'S', gradePoints: 10, isPublished: false,
       });
 
       const res = await request(app)

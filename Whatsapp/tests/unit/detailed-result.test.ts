@@ -33,7 +33,7 @@ function makeResult(overrides: Partial<DetailedResultRecord> = {}): DetailedResu
     totalMax: 110,
     percentage: 90,
     credits: 4,
-    grade: 'O',
+    grade: 'S',
     gradePoints: 10,
     isPublished: false,
     isAbsent: false,
@@ -100,10 +100,10 @@ function createMockSubjectRepo(): ISubjectRepository {
 }
 
 describe('computeGradeFromPercentage', () => {
-  it('returns O for 90-100%', () => {
-    expect(computeGradeFromPercentage(95).grade).toBe('O');
+  it('returns S for 90-100%', () => {
+    expect(computeGradeFromPercentage(95).grade).toBe('S');
     expect(computeGradeFromPercentage(95).gradePoints).toBe(10);
-    expect(computeGradeFromPercentage(90).grade).toBe('O');
+    expect(computeGradeFromPercentage(90).grade).toBe('S');
   });
 
   it('returns A+ for 80-89.99%', () => {
@@ -260,7 +260,7 @@ describe('DetailedResultService', () => {
       expect(result.totalMarks).toBe(99);
       expect(result.totalMax).toBe(110);
       expect(result.percentage).toBe(90);
-      expect(result.grade).toBe('O');
+      expect(result.grade).toBe('S');
       expect(result.gradePoints).toBe(10);
       expect(result.isPublished).toBe(false);
     });

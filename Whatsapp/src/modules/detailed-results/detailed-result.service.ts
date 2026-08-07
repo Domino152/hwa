@@ -32,7 +32,7 @@ export const GRADE_SCALE: Array<{
   max: number;
   points: number;
 }> = [
-  { grade: 'O', min: 90, max: 100, points: 10 },
+  { grade: 'S', min: 90, max: 100, points: 10 },
   { grade: 'A+', min: 80, max: 89.99, points: 9 },
   { grade: 'A', min: 70, max: 79.99, points: 8 },
   { grade: 'B+', min: 60, max: 69.99, points: 7 },

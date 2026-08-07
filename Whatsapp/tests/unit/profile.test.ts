@@ -128,7 +128,7 @@ describe('ProfileService', () => {
         subjectCode: 'CS401', subjectName: 'DBMS', semester: 1,
         internalMarks: 35, externalMarks: 55, assignmentMarks: 9, labMarks: null,
         totalMarks: 99, totalMax: 110, percentage: 90, credits: 4,
-        grade: 'O', gradePoints: 10,
+        grade: 'S', gradePoints: 10,
       }],
       cgpa: { cgpa: 9.5, totalCredits: 4, earnedCredits: 4, totalSubjects: 1, semesters: [{ semester: 1, academicYear: '2025-26', gpa: 10, totalCredits: 4, earnedCredits: 4, subjectCount: 1 }] },
       hasData: true,
