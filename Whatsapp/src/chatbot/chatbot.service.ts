@@ -1,90 +1,56 @@
-import { type IntentName, type ChatbotContext, type ChatbotResponse } from './intents.js';
-import { classifyIntentNLP, type ClassificationResult } from './intentClassifier.js';
-import { generateResponse } from './responseGenerator.js';
-import { integration } from '../integration/index.js';
-import { addHistoryEntry, updateSessionIntent } from './sessionManager.js';
-import { getSuggestedActions } from './interactive.js';
+import type { ChatbotContext, ChatbotResponse } from './intents.js';
+import { MessageRouter, type RouteResult } from './router.js';
 import logger from '../shared/utils/logger.js';
 
 const chatbotLogger = logger.child({ module: 'chatbot' });
 
 /**
  * ChatbotService is the public facade for the chatbot module.
- * It orchestrates session management → NLP classification → response generation.
+ * It delegates to MessageRouter which handles the hybrid AI architecture:
+ *
+ * 1. Button clicks → Direct tool execution via backend services
+ * 2. Known intents (NLP fast path) → Direct response generation
+ * 3. Unknown/low-confidence → Gemini AI escalation with tool calling
  *
  * Features:
- * - Session memory: greets users only once per session
- * - NLP intent recognition: understands natural language
- * - Conversation context: tracks history for follow-ups
- * - Rich responses: formatted cards with emojis
- * - Interactive actions: suggested quick-reply buttons
+ * - Session memory with MongoDB persistence
+ * - NLP intent recognition with confidence threshold
+ * - Gemini 2.5 Flash for complex/unrecognized queries
+ * - Tool-calling loop for real data retrieval
+ * - Conversation history for follow-ups
+ * - Date-aware reasoning
+ * - Multilingual support
+ * - Rich formatted WhatsApp responses
  */
 export class ChatbotService {
+  private readonly router: MessageRouter;
+
+  constructor() {
+    this.router = new MessageRouter();
+  }
+
   /**
    * Process a raw user message and return a classified, formatted response.
+   * Routes through: Button Click → NLP Fast Path → AI Escalation
    */
   async processMessage(text: string, context: Omit<ChatbotContext, 'isAuthenticated' | 'user'>): Promise<ChatbotResponse> {
-    const start = Date.now();
-
-    // NLP classification
-    const classification: ClassificationResult = classifyIntentNLP(text);
-    const intent: IntentName = classification.intent;
-
-    // Look up user
-    const userData = await integration.findUserByPhone(context.phone);
-
-    const fullContext: ChatbotContext = {
-      phone: context.phone,
-      isAuthenticated: !!userData,
-      originalText: text,
-      ...(userData
-        ? {
-            user: {
-              id: userData.id,
-              fullName: userData.fullName,
-              role: userData.role,
-              studentId: userData.studentId,
-            },
-          }
-        : {}),
-    };
-
-    // Generate rich response
-    const response = await generateResponse(intent, fullContext, classification);
-
-    // Update session state
-    updateSessionIntent(context.phone, intent);
-    addHistoryEntry(context.phone, {
-      role: 'user',
-      text,
-      intent,
-      timestamp: Date.now(),
-    });
-    addHistoryEntry(context.phone, {
-      role: 'bot',
-      text: response.substring(0, 200), // Store truncated for memory
-      intent,
-      timestamp: Date.now(),
-    });
-
-    // Get suggested actions for this intent
-    const suggestedActions = getSuggestedActions(intent, fullContext.isAuthenticated);
-
-    const latencyMs = Date.now() - start;
+    const result: RouteResult = await this.router.route(text, context);
 
     chatbotLogger.info(
       {
         phone: context.phone,
-        intent,
-        confidence: classification.confidence,
-        subject: classification.extractedSubject,
-        date: classification.dateExpression,
-        isAuthenticated: fullContext.isAuthenticated,
-        latencyMs,
+        intent: result.intent,
+        routedVia: result.routedVia,
+        responseLength: result.response.length,
       },
-      'Message processed with NLP',
+      'Message processed',
     );
 
-    return { intent, response, originalText: text, suggestedActions };
+    return {
+      intent: result.intent,
+      response: result.response,
+      originalText: result.originalText,
+      suggestedActions: result.suggestedActions,
+    };
   }
 }

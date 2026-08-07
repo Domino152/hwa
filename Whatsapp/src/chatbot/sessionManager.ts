@@ -19,8 +19,8 @@ export interface HistoryEntry {
   timestamp: number;
 }
 
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_HISTORY = 20;
+const SESSION_TTL_MS = 60 * 60 * 1000; // 60 minutes (extended for AI conversations)
+const MAX_HISTORY = 30;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 const sessions = new Map<string, ChatSession>();
@@ -84,7 +84,7 @@ export function addHistoryEntry(
   }
 }
 
-export function getConversationHistory(phone: string, limit: number = 5): HistoryEntry[] {
+export function getConversationHistory(phone: string, limit: number = 10): HistoryEntry[] {
   const session = getSession(phone);
   return session.messageHistory.slice(-limit);
 }

@@ -56,6 +56,34 @@ export function extractMessageContent(msg: WAMessage): ExtractedMessage {
     case 'stickerMessage':
       return { type: 'other', content: '[sticker]' };
 
+    case 'buttonsResponseMessage': {
+      const selectedId = (msg.message as Record<string, unknown>)?.buttonsResponseMessage as Record<string, unknown> | undefined;
+      const buttonId = (selectedId?.selectedButtonId as string) ?? '';
+      return { type: 'text', content: buttonId };
+    }
+
+    case 'interactiveResponseMessage': {
+      const interactiveReply = (msg.message as Record<string, unknown>)?.interactiveResponseMessage as Record<string, unknown> | undefined;
+      const nativeFlow = interactiveReply?.nativeFlowResponseMessage as Record<string, unknown> | undefined;
+      const selectedId = nativeFlow?.paramsJson as string | undefined;
+      if (selectedId) {
+        try {
+          const parsed = JSON.parse(selectedId) as { id?: string; selected?: string };
+          const id = parsed.id ?? parsed.selected ?? selectedId;
+          return { type: 'text', content: id };
+        } catch {
+          return { type: 'text', content: selectedId };
+        }
+      }
+      return { type: 'other', content: '[interactive-response]' };
+    }
+
+    case 'listResponseMessage': {
+      const listReply = (msg.message as Record<string, unknown>)?.listResponseMessage as Record<string, unknown> | undefined;
+      const rowId = (listReply?.selectedRowId as string) ?? '';
+      return { type: 'text', content: rowId };
+    }
+
     case 'contactMessage':
       return { type: 'other', content: '[contact]' };
 
