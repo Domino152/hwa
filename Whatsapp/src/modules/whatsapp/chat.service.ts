@@ -20,6 +20,12 @@ import { InboxService } from './inbox.service.js';
 import { Conversation } from '../../database/models/Conversation.js';
 import type { WhatsAppServiceStatus } from '../../shared/types/whatsapp.js';
 import qrCodeTerminal from 'qrcode-terminal';
+import {
+  sendListMessage as sendInteractiveList,
+  sendButtonsMessage as sendInteractiveButtons,
+  type ButtonOption,
+  type ListSection,
+} from '../../chatbot/interactive.js';
 
 type ConnectionStateStr = 'connecting' | 'open' | 'close';
 
@@ -322,5 +328,43 @@ export class ChatService {
 
   getQR(): string | null {
     return this.qr;
+  }
+
+  /**
+   * Send a list message (dropdown menu) to a user.
+   * Falls back to plain text if unsupported.
+   */
+  async sendListMessage(
+    jid: string,
+    params: {
+      title: string;
+      description: string;
+      buttonText: string;
+      footerText?: string;
+      sections: ListSection[];
+    },
+  ): Promise<string | null> {
+    if (!this.sock || this.state !== 'open') {
+      throw new ServiceUnavailableError('WhatsApp not connected');
+    }
+    return sendInteractiveList(this.sock, jid, params);
+  }
+
+  /**
+   * Send interactive reply buttons to a user.
+   * Falls back to plain text if unsupported.
+   */
+  async sendButtonsMessage(
+    jid: string,
+    params: {
+      text: string;
+      footerText?: string;
+      buttons: ButtonOption[];
+    },
+  ): Promise<string | null> {
+    if (!this.sock || this.state !== 'open') {
+      throw new ServiceUnavailableError('WhatsApp not connected');
+    }
+    return sendInteractiveButtons(this.sock, jid, params);
   }
 }

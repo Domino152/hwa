@@ -157,6 +157,19 @@ export class InboxService {
         'Chatbot reply sent',
       );
 
+      // Send suggested quick-action buttons after the main reply
+      if (chatbotResult.suggestedActions && chatbotResult.suggestedActions.length > 0) {
+        try {
+          await this.chatService.sendButtonsMessage(jid, {
+            text: '_Quick Actions:_',
+            footerText: 'Tap an option or type a message',
+            buttons: chatbotResult.suggestedActions,
+          });
+        } catch (btnErr) {
+          autoReplyLogger.debug({ err: btnErr, phone }, 'Failed to send suggested actions (non-critical)');
+        }
+      }
+
       await Conversation.updateOne(
         { _id: conversation._id },
         {

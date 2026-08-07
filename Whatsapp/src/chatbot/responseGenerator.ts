@@ -1,250 +1,310 @@
-import { IntentName, SUBJECTS, PRIVATE_INTENTS, type ChatbotContext, type AuthenticatedUserInfo } from './intents.js';
+import { IntentName, PRIVATE_INTENTS, type ChatbotContext, type AuthenticatedUserInfo } from './intents.js';
 import { config } from '../config/index.js';
 import { integration } from '../integration/index.js';
 import type { PublicContentCategory } from '../database/models/PublicContent.js';
+import { parseNaturalDate, type ParsedDate } from './dateParser.js';
+import {
+  attendanceCard,
+  feesCard,
+  scheduleCard,
+  resultsCard,
+  profileCard,
+  announcementsCard,
+  greetingCard,
+  helpCard,
+  loginRequiredCard,
+  unknownIntentCard,
+  card,
+  sectionHeader,
+  bulletItem,
+} from './formatter.js';
+import {
+  getSession,
+  markGreetingSent,
+  type ChatSession,
+} from './sessionManager.js';
+import type { ClassificationResult } from './intentClassifier.js';
+
+export interface GenerateOptions {
+  classification: ClassificationResult;
+  context: ChatbotContext;
+  session: ChatSession;
+}
 
 /**
- * Generate a response for the classified intent.
- * Public intents (help, login, syllabus, greeting, unknown) always return.
- * Private intents (attendance, fees, schedule, results) require authentication
- * and query the database via the Integration Layer for real data.
+ * Generate a rich, formatted response for the classified intent.
+ * Uses session context, date awareness, and service-layer data.
  */
-export async function generateResponse(intent: IntentName, context: ChatbotContext): Promise<string> {
+export async function generateResponse(
+  intent: IntentName,
+  context: ChatbotContext,
+  classification?: ClassificationResult,
+): Promise<string> {
+  const session = getSession(context.phone);
+
   if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
-    return loginRequiredResponse(context.phone);
+    return loginRequiredCard(`${config.LOGIN_PORTAL_URL}?phone=${context.phone}`);
   }
 
   switch (intent) {
     case IntentName.Greeting:
-      return greetResponse(context.user);
+      return handleGreeting(session, context.user);
+
     case IntentName.Login:
-      return loginResponse(context.phone);
+      return handleLogin(context.phone);
+
     case IntentName.Attendance:
-      return await attendanceResponse(context.user!.studentId);
+      return await handleAttendance(context.user!.studentId, classification);
+
     case IntentName.Fees:
-      return await feesResponse(context.user!.studentId);
+      return await handleFees(context.user!.studentId);
+
     case IntentName.Schedule:
-      return await scheduleResponse(context.user!);
+      return await handleSchedule(context.user!, classification);
+
     case IntentName.Results:
-      return await resultsResponse(context.user!.studentId);
+      return await handleResults(context.user!.studentId);
+
     case IntentName.Syllabus:
-      return syllabusResponse();
+      return handleSyllabus(classification);
+
     case IntentName.PublicInformation:
-      return await publicInformationResponse(context.originalText);
+      return await handlePublicInformation(context.originalText, classification);
+
+    case IntentName.Profile:
+      return await handleProfile(context.user!.studentId);
+
+    case IntentName.Announcements:
+      return await handleAnnouncements();
+
     case IntentName.Help:
-      return helpResponse();
+      return helpResponse(session);
+
     case IntentName.Unknown:
     default:
-      return unknownResponse();
+      return unknownIntentCard();
   }
 }
 
-function greetResponse(user?: AuthenticatedUserInfo): string {
+function handleGreeting(session: ChatSession, user?: AuthenticatedUserInfo): string {
+  const isFirstTime = !session.greetingSent;
+  markGreetingSent(session.phone);
+
   if (user) {
-    return (
-      `Hello ${user.fullName} 👋\n` +
-      '\n' +
-      'Welcome back to the College AI Assistant.\n' +
-      '\n' +
-      'How can I help you today?'
-    );
+    return greetingCard(user.fullName, isFirstTime);
   }
 
-  const subjectList = SUBJECTS.map((s) => `• ${s}`).join('\n');
-  return (
-    'Hello 👋\n' +
-    '\n' +
-    'Welcome to the College AI Assistant.\n' +
-    '\n' +
-    'How can I help you today?\n' +
-    '\n' +
-    'You can ask about:\n' +
-    '\n' +
-    '• Attendance\n' +
-    '• Fees\n' +
-    '• Schedule\n' +
-    '• Results\n' +
-    '• College Information\n' +
-    subjectList
-  );
+  return greetingCard('Student', isFirstTime);
 }
 
-function loginResponse(phone: string): string {
+function handleLogin(phone: string): string {
   const url = `${config.LOGIN_PORTAL_URL}?phone=${phone}`;
-  return (
-    'Welcome to the College AI Assistant.\n' +
-    '\n' +
-    'To access your personal information, please login using the secure portal.\n' +
-    '\n' +
-    `Click here:\n${url}\n` +
-    '\n' +
-    'After successful login, return to WhatsApp and continue chatting.'
-  );
+  return [
+    '🔑 *Login Portal*',
+    '',
+    'Access your personal academic data:',
+    '',
+    `🔗 ${url}`,
+    '',
+    '_After logging in, return here._',
+  ].join('\n');
 }
 
-function loginRequiredResponse(phone: string): string {
-  const url = `${config.LOGIN_PORTAL_URL}?phone=${phone}`;
-  return (
-    'To access your personal academic information, please login using the secure portal.\n' +
-    '\n' +
-    `Click here:\n${url}\n` +
-    '\n' +
-    'After successful login, return to WhatsApp and continue chatting.'
-  );
-}
-
-async function attendanceResponse(studentId: string): Promise<string> {
+async function handleAttendance(
+  studentId: string,
+  classification?: ClassificationResult,
+): Promise<string> {
   const data = await integration.attendance.getByStudentId(studentId);
 
   if (!data.hasData) {
-    return (
-      'Attendance Summary\n' +
-      '\n' +
-      'No attendance records found.\n' +
-      '\n' +
-      'Please contact your administrator.'
-    );
+    return card('📊 Attendance', [
+      'No attendance records found.',
+      '',
+      'Please contact your administrator.',
+    ]);
   }
 
-  const subjectLines = data.records.map((r) => `• ${r.subject}: ${r.percentage}%`).join('\n');
+  // If subject was mentioned, filter for that subject
+  if (classification?.extractedSubject) {
+    const subject = classification.extractedSubject;
+    const record = data.records.find(
+      (r) => r.subject.toLowerCase().includes(subject.toLowerCase()),
+    );
 
-  return (
-    'Attendance Summary\n' +
-    '\n' +
-    `Overall Attendance: ${data.overallPercentage}%\n` +
-    '\n' +
-    subjectLines
-  );
+    if (record) {
+      return [
+        sectionHeader(`📊 ${subject} Attendance`, '📊'),
+        '',
+        `  *Subject:* ${record.subject}`,
+        `  *Attendance:* ${record.percentage}%`,
+        `  *Classes:* ${record.attendedClasses}/${record.totalClasses}`,
+        '',
+        `  ${record.percentage >= 85 ? '🟢' : record.percentage >= 75 ? '🟡' : '🔴'} ${
+          record.percentage >= 85
+            ? 'Great attendance!'
+            : record.percentage >= 75
+            ? 'Needs improvement'
+            : 'Warning: Low attendance!'
+        }`,
+      ].join('\n');
+    }
+
+    return [
+      sectionHeader(`📊 ${subject} Attendance`, '📊'),
+      '',
+      `  No records found for "${subject}".`,
+      '',
+      '  Available subjects:',
+      ...data.records.map((r) => `  • ${r.subject}`),
+    ].join('\n');
+  }
+
+  return attendanceCard(data.overallPercentage, data.records);
 }
 
-async function feesResponse(studentId: string): Promise<string> {
+async function handleFees(studentId: string): Promise<string> {
   const data = await integration.fees.getByStudentId(studentId);
 
   if (!data.hasData || !data.fee) {
-    return (
-      'Fee Details\n' +
-      '\n' +
-      'No fee records found.\n' +
-      '\n' +
-      'Please contact your administrator.'
-    );
+    return card('💰 Fees', [
+      'No fee records found.',
+      '',
+      'Please contact your administrator.',
+    ]);
   }
 
-  const dueDateStr = data.fee.dueDate.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'long',
-  });
-
-  return (
-    'Fee Details\n' +
-    '\n' +
-    `Total Fee: ₹${data.fee.totalFee.toLocaleString('en-IN')}\n` +
-    '\n' +
-    `Paid: ₹${data.fee.paidAmount.toLocaleString('en-IN')}\n` +
-    '\n' +
-    `Remaining: ₹${data.fee.remainingAmount.toLocaleString('en-IN')}\n` +
-    '\n' +
-    `Due Date: ${dueDateStr}`
-  );
+  return feesCard(data.fee);
 }
 
-async function scheduleResponse(_user: AuthenticatedUserInfo): Promise<string> {
+async function handleSchedule(
+  user: AuthenticatedUserInfo & { department?: string; year?: number; section?: string },
+  classification?: ClassificationResult,
+): Promise<string> {
+  // Parse date from the message
+  const dateInfo: ParsedDate = classification?.dateExpression
+    ? parseNaturalDate(classification.dateExpression)
+    : { date: new Date(), label: 'Today', dayOfWeek: getDayName(new Date()), isRange: false };
+
   const data = await integration.schedule.getByStudent({
-    department: 'CSE',
-    year: 4,
-    section: 'A',
+    department: user.department ?? 'CSE',
+    year: user.year ?? 4,
+    section: user.section ?? 'A',
   });
 
   if (!data.hasData) {
-    return (
-      `Schedule for ${data.dayOfWeek}\n` +
-      '\n' +
-      'No classes scheduled for today.\n' +
-      '\n' +
-      'Enjoy your day off!'
-    );
+    return card(`📅 ${dateInfo.label} Schedule`, [
+      `No classes scheduled for ${dateInfo.label.toLowerCase()}.`,
+      '',
+      '🎉 Enjoy your day off!',
+    ]);
   }
 
-  const classLines = data.entries
-    .map((e) => `• ${e.timeSlot} - ${e.subject}`)
-    .join('\n');
-
-  return (
-    `Today's Schedule (${data.dayOfWeek})\n` +
-    '\n' +
-    classLines
-  );
+  return scheduleCard(`${dateInfo.label} (${data.dayOfWeek})`, data.entries);
 }
 
-async function resultsResponse(studentId: string): Promise<string> {
+async function handleResults(studentId: string): Promise<string> {
   const data = await integration.results.getByStudentId(studentId);
 
   if (!data.hasData) {
-    return (
-      'Semester Results\n' +
-      '\n' +
-      'No results found.\n' +
-      '\n' +
-      'Please contact your administrator.'
-    );
+    return card('📝 Results', [
+      'No results found.',
+      '',
+      'Please contact your administrator.',
+    ]);
   }
 
-  const subjectLines = data.results.map((r) => `• ${r.subject}: ${r.grade}`).join('\n');
-
-  return (
-    'Semester Results\n' +
-    '\n' +
-    subjectLines +
-    '\n' +
-    '\n' +
-    `CGPA: ${data.cgpa.toFixed(2)}`
-  );
+  return resultsCard(data.results, data.cgpa);
 }
 
-function syllabusResponse(): string {
-  const subjectList = SUBJECTS.map((s) => `• ${s}`).join('\n');
-  return (
-    'Available Syllabus\n' +
-    '\n' +
-    subjectList +
-    '\n' +
-    '\n' +
-    'Please specify the subject name.'
-  );
+async function handleProfile(studentId: string): Promise<string> {
+  const profile = await integration.getStudentProfile(studentId);
+
+  if (!profile.hasData) {
+    return card('👤 Profile', [
+      'Profile not found.',
+      '',
+      'Please contact your administrator.',
+    ]);
+  }
+
+  return profileCard(profile.student);
 }
 
-async function publicInformationResponse(text: string): Promise<string> {
+async function handleAnnouncements(): Promise<string> {
+  const result = await integration.publicInformation.getByCategory('events' as PublicContentCategory);
+
+  if (!result.hasData) {
+    return card('📢 Announcements', [
+      'No new announcements.',
+      '',
+      'Check back later for updates.',
+    ]);
+  }
+
+  const announcements = result.entries.map((e) => ({
+    title: e.title,
+    content: e.content,
+    priority: 'normal' as const,
+    publishedAt: e.updatedAt,
+  }));
+
+  return announcementsCard(announcements);
+}
+
+function handleSyllabus(classification?: ClassificationResult): string {
+  const subject = classification?.extractedSubject;
+
+  if (subject) {
+    return [
+      sectionHeader(`📖 ${subject} Syllabus`, '📖'),
+      '',
+      `  Syllabus for *${subject}*:`,
+      '',
+      '  📋 Module 1: Introduction',
+      '  📋 Module 2: Core Concepts',
+      '  📋 Module 3: Advanced Topics',
+      '  📋 Module 4: Applications',
+      '  📋 Module 5: Case Studies',
+      '',
+      '_Contact your faculty for detailed syllabus._',
+    ].join('\n');
+  }
+
+  return [
+    sectionHeader('📖 Available Syllabus', '📖'),
+    '',
+    '  • DBMS',
+    '  • Java',
+    '  • Operating Systems',
+    '  • Data Structures',
+    '  • Computer Networks',
+    '',
+    '_Please specify the subject name._',
+  ].join('\n');
+}
+
+async function handlePublicInformation(
+  text: string,
+  _classification?: ClassificationResult,
+): Promise<string> {
   const category = integration.publicInformation.resolveCategory(text) as PublicContentCategory;
   const result = await integration.publicInformation.getByCategory(category);
 
   if (!result.hasData) {
     const searchResult = await integration.publicInformation.search(text);
     if (!searchResult.hasData) {
-      return (
-        "Sorry, I couldn't find information about that.\n" +
-        '\n' +
-        'You can ask about:\n' +
-        '\n' +
-        '• About HITS\n' +
-        '• Admissions\n' +
-        '• Departments\n' +
-        '• Courses\n' +
-        '• Placements\n' +
-        '• Hostel\n' +
-        '• Transportation\n' +
-        '• Scholarships\n' +
-        '• Campus Facilities\n' +
-        '• Library\n' +
-        '• Sports\n' +
-        '• Clubs\n' +
-        '• Events\n' +
-        '• Contact\n' +
-        '• Location\n' +
-        '• Achievements\n' +
-        '• FAQ\n' +
-        '\n' +
-        'Type "Help" to view all available options.'
-      );
+      return [
+        sectionHeader('🔍 Search Results', '🔍'),
+        '',
+        '  No information found for your query.',
+        '',
+        '  Try asking about:',
+        ...['About HITS', 'Admissions', 'Departments', 'Placements', 'Hostel', 'Contact'].map(
+          (item) => `  • ${item}`,
+        ),
+        '',
+        '_Type "help" to see all options._',
+      ].join('\n');
     }
     return formatSearchResults(searchResult);
   }
@@ -252,64 +312,56 @@ async function publicInformationResponse(text: string): Promise<string> {
   return formatCategoryContent(result);
 }
 
-function formatCategoryContent(result: { entries: { title: string; content: string }[]; category: string }): string {
+function helpResponse(session: ChatSession): string {
+  const isFirstTime = !session.greetingSent;
+  if (isFirstTime) {
+    markGreetingSent(session.phone);
+  }
+  return helpCard();
+}
+
+function formatCategoryContent(result: {
+  entries: { title: string; content: string }[];
+  category: string;
+}): string {
   const categoryTitle = result.category
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
   if (result.entries.length === 1) {
     const entry = result.entries[0]!;
-    return `${entry.title}\n\n${entry.content}`;
+    return [
+      sectionHeader(entry.title, 'ℹ️'),
+      '',
+      entry.content,
+    ].join('\n');
   }
 
-  const entryLines = result.entries
-    .map((e, i) => `${i + 1}. ${e.title}\n${e.content}`)
-    .join('\n\n');
+  const lines = result.entries.map(
+    (e) => `${bulletItem(`${e.title}: ${e.content.substring(0, 150)}`)}`,
+  );
 
-  return `${categoryTitle}\n\n${entryLines}`;
+  return [
+    sectionHeader(categoryTitle, 'ℹ️'),
+    '',
+    ...lines,
+  ].join('\n');
 }
 
-function formatSearchResults(result: { entries: { title: string; content: string; category: string }[] }): string {
-  const lines = result.entries
-    .map((e, i) => `${i + 1}. ${e.title}\n${e.content.substring(0, 150)}...`)
-    .join('\n\n');
-
-  return (
-    'Here\'s what I found:\n\n' +
-    lines
+function formatSearchResults(result: {
+  entries: { title: string; content: string; category: string }[];
+}): string {
+  const lines = result.entries.map(
+    (e, i) => `${i + 1}. *${e.title}*\n   ${e.content.substring(0, 120)}...`,
   );
+
+  return [
+    sectionHeader('🔍 Search Results', '🔍'),
+    '',
+    ...lines,
+  ].join('\n');
 }
 
-function helpResponse(): string {
-  return (
-    'Available Commands\n' +
-    '\n' +
-    '• Attendance\n' +
-    '• Fees\n' +
-    '• Schedule\n' +
-    '• Results\n' +
-    '• Syllabus\n' +
-    '• College Information\n' +
-    '\n' +
-    'You can type your question naturally.\n' +
-    '\n' +
-    'Type "Login" to access your personal information.'
-  );
-}
-
-function unknownResponse(): string {
-  return (
-    "Sorry, I couldn't understand your request.\n" +
-    '\n' +
-    'You can ask about:\n' +
-    '\n' +
-    '• Attendance\n' +
-    '• Fees\n' +
-    '• Schedule\n' +
-    '• Results\n' +
-    '• Syllabus\n' +
-    '• College Information\n' +
-    '\n' +
-    'Type "Help" to view all available options.'
-  );
+function getDayName(d: Date): string {
+  return d.toLocaleDateString('en-IN', { weekday: 'long' });
 }

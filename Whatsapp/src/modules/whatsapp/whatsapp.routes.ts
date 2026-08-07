@@ -30,6 +30,11 @@ router.post(
   asyncHandler(whatsappController.sendMessage),
 );
 
+router.post(
+  '/send-menu',
+  asyncHandler(whatsappController.sendMenu),
+);
+
 router.post('/logout', asyncHandler(whatsappController.logout));
 
 router.get(

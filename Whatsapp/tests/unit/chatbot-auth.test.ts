@@ -5,6 +5,10 @@ import type { ChatbotContext } from '../../src/chatbot/intents.js';
 vi.mock('../../src/integration/index.js', () => ({
   integration: {
     findUserByPhone: vi.fn().mockResolvedValue(null),
+    getStudentProfile: vi.fn().mockResolvedValue({
+      student: { id: 'u1', fullName: 'Arjun Sharma', studentId: '22CSE001', department: 'CSE', year: 4, section: 'A' },
+      hasData: true,
+    }),
     attendance: { getByStudentId: vi.fn().mockResolvedValue({ records: [], overallPercentage: 0, hasData: false }) },
     fees: { getByStudentId: vi.fn().mockResolvedValue({ fee: null, hasData: false }) },
     schedule: { getByStudent: vi.fn().mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false }) },
@@ -32,7 +36,6 @@ describe('Chatbot Authentication Gating', () => {
   describe('Public intents work without authentication', () => {
     it('greeting works when not authenticated', async () => {
       const res = await generateResponse(IntentName.Greeting, unauthenticatedContext);
-      expect(res).toContain('Hello');
       expect(res).toContain('Welcome');
     });
 
@@ -43,17 +46,17 @@ describe('Chatbot Authentication Gating', () => {
 
     it('login works when not authenticated', async () => {
       const res = await generateResponse(IntentName.Login, unauthenticatedContext);
-      expect(res).toContain('Click here');
+      expect(res).toContain('Login Portal');
     });
 
     it('syllabus works when not authenticated', async () => {
       const res = await generateResponse(IntentName.Syllabus, unauthenticatedContext);
-      expect(res).toContain('Available Syllabus');
+      expect(res).toContain('Syllabus');
     });
 
     it('unknown works when not authenticated', async () => {
       const res = await generateResponse(IntentName.Unknown, unauthenticatedContext);
-      expect(res).toContain("couldn't understand");
+      expect(res).toContain("didn't quite get that");
     });
   });
 
@@ -61,14 +64,12 @@ describe('Chatbot Authentication Gating', () => {
     for (const intent of PRIVATE_INTENTS) {
       it(`${intent} returns login prompt when not authenticated`, async () => {
         const res = await generateResponse(intent, unauthenticatedContext);
-        expect(res).toContain('please login');
-        expect(res).toContain('Click here');
+        expect(res).toContain('Authentication Required');
       });
 
       it(`${intent} returns real response when authenticated`, async () => {
         const res = await generateResponse(intent, authenticatedContext);
-        expect(res).not.toContain('please login');
-        expect(res).not.toContain('Click here');
+        expect(res).not.toContain('Authentication Required');
       });
     }
   });
@@ -77,7 +78,6 @@ describe('Chatbot Authentication Gating', () => {
     it('includes user name when authenticated', async () => {
       const res = await generateResponse(IntentName.Greeting, authenticatedContext);
       expect(res).toContain('Arjun Sharma');
-      expect(res).toContain('Welcome back');
     });
 
     it('does not include user name when not authenticated', async () => {

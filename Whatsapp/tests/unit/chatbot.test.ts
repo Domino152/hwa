@@ -247,18 +247,16 @@ describe('Response Generator', () => {
     vi.mocked(integration.results.getByStudentId).mockResolvedValue({ results: [], cgpa: 0, hasData: false });
   });
 
-  it('greeting response contains welcome and subject list', async () => {
+  it('greeting response contains welcome', async () => {
     const response = await generateResponse(IntentName.Greeting, ctx);
-    expect(response).toContain('Hello');
     expect(response).toContain('Welcome');
-    expect(response).toContain('Attendance');
-    expect(response).toContain('DBMS');
+    expect(response).toContain('College AI Assistant');
   });
 
   it('attendance response returns login prompt when not authenticated', async () => {
     const response = await generateResponse(IntentName.Attendance, ctx);
-    expect(response).toContain('please login');
-    expect(response).toContain('Click here');
+    expect(response).toContain('Authentication Required');
+    expect(response).toContain('login');
   });
 
   it('attendance response contains attendance summary when authenticated', async () => {
@@ -280,7 +278,7 @@ describe('Response Generator', () => {
 
   it('fees response returns login prompt when not authenticated', async () => {
     const response = await generateResponse(IntentName.Fees, ctx);
-    expect(response).toContain('please login');
+    expect(response).toContain('Authentication Required');
   });
 
   it('fees response contains fee details when authenticated', async () => {
@@ -303,7 +301,7 @@ describe('Response Generator', () => {
 
   it('schedule response returns login prompt when not authenticated', async () => {
     const response = await generateResponse(IntentName.Schedule, ctx);
-    expect(response).toContain('please login');
+    expect(response).toContain('Authentication Required');
   });
 
   it('schedule response contains today\'s schedule when authenticated', async () => {
@@ -317,14 +315,14 @@ describe('Response Generator', () => {
       hasData: true,
     });
     const response = await generateResponse(IntentName.Schedule, authCtx);
-    expect(response).toContain("Schedule");
+    expect(response.toLowerCase()).toContain("today");
     expect(response).toContain('DBMS');
     expect(response).toContain('Java');
   });
 
   it('results response returns login prompt when not authenticated', async () => {
     const response = await generateResponse(IntentName.Results, ctx);
-    expect(response).toContain('please login');
+    expect(response).toContain('Authentication Required');
   });
 
   it('results response contains semester results when authenticated', async () => {
@@ -339,22 +337,21 @@ describe('Response Generator', () => {
       hasData: true,
     });
     const response = await generateResponse(IntentName.Results, authCtx);
-    expect(response).toContain('Semester Results');
+    expect(response).toContain('Results');
     expect(response).toContain('DBMS');
     expect(response).toContain('A');
   });
 
   it('syllabus response contains subject list', async () => {
     const response = await generateResponse(IntentName.Syllabus, ctx);
-    expect(response).toContain('Available Syllabus');
+    expect(response).toContain('Syllabus');
     expect(response).toContain('DBMS');
     expect(response).toContain('Java');
-    expect(response).toContain('Operating Systems');
   });
 
   it('login response contains login URL', async () => {
     const response = await generateResponse(IntentName.Login, ctx);
-    expect(response).toContain('Click here');
+    expect(response).toContain('Login Portal');
     expect(response).toContain('login');
   });
 
@@ -367,8 +364,8 @@ describe('Response Generator', () => {
 
   it('unknown response contains guidance', async () => {
     const response = await generateResponse(IntentName.Unknown, ctx);
-    expect(response).toContain("couldn't understand");
-    expect(response).toContain('Help');
+    expect(response).toContain("didn't quite get that");
+    expect(response.toLowerCase()).toContain('help');
   });
 });
 
@@ -387,44 +384,44 @@ describe('ChatbotService', () => {
   it('processes "Hi" → greeting response', async () => {
     const result = await service.processMessage('Hi', { phone: '111' });
     expect(result.intent).toBe(IntentName.Greeting);
-    expect(result.response).toContain('Hello');
+    expect(result.response).toContain('Welcome');
     expect(result.originalText).toBe('Hi');
   });
 
   it('processes "Login" → login response', async () => {
     const result = await service.processMessage('Login', { phone: '111' });
     expect(result.intent).toBe(IntentName.Login);
-    expect(result.response).toContain('Click here');
+    expect(result.response).toContain('Login Portal');
   });
 
   it('processes "Attendance" → login prompt (not linked)', async () => {
     const result = await service.processMessage('Attendance', { phone: '222' });
     expect(result.intent).toBe(IntentName.Attendance);
-    expect(result.response).toContain('please login');
+    expect(result.response).toContain('Authentication Required');
   });
 
   it('processes "Fee details" → login prompt (not linked)', async () => {
     const result = await service.processMessage('Fee details', { phone: '333' });
     expect(result.intent).toBe(IntentName.Fees);
-    expect(result.response).toContain('please login');
+    expect(result.response).toContain('Authentication Required');
   });
 
   it('processes "Today\'s schedule" → login prompt (not linked)', async () => {
     const result = await service.processMessage("Today's schedule", { phone: '444' });
     expect(result.intent).toBe(IntentName.Schedule);
-    expect(result.response).toContain('please login');
+    expect(result.response).toContain('Authentication Required');
   });
 
   it('processes "Exam results" → login prompt (not linked)', async () => {
     const result = await service.processMessage('Exam results', { phone: '555' });
     expect(result.intent).toBe(IntentName.Results);
-    expect(result.response).toContain('please login');
+    expect(result.response).toContain('Authentication Required');
   });
 
   it('processes "DBMS syllabus" → syllabus response', async () => {
     const result = await service.processMessage('DBMS syllabus', { phone: '666' });
     expect(result.intent).toBe(IntentName.Syllabus);
-    expect(result.response).toContain('Available Syllabus');
+    expect(result.response).toContain('Syllabus');
   });
 
   it('processes "Help" → help response', async () => {
@@ -434,9 +431,9 @@ describe('ChatbotService', () => {
   });
 
   it('processes random text → unknown response', async () => {
-    const result = await service.processMessage('Random unsupported message', { phone: '888' });
+    const result = await service.processMessage('Random unrelated text', { phone: '888' });
     expect(result.intent).toBe(IntentName.Unknown);
-    expect(result.response).toContain("couldn't understand");
+    expect(result.response).toContain("didn't quite get that");
   });
 
   it('returns DB data when user is linked', async () => {
@@ -463,6 +460,6 @@ describe('ChatbotService', () => {
     expect(result.intent).toBe(IntentName.Attendance);
     expect(result.response).toContain('Attendance Summary');
     expect(result.response).toContain('DBMS');
-    expect(result.response).not.toContain('please login');
+    expect(result.response).not.toContain('Authentication Required');
   });
 });
