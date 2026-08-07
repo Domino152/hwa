@@ -13,10 +13,14 @@ import { notFoundHandler } from './middleware/not-found.js';
 import whatsappRoutes, { chatService } from './modules/whatsapp/whatsapp.routes.js';
 import { createHealthRoutes } from './modules/health/health.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
-import aiRoutes from './modules/ai/ai.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
-import studentsRoutes from './modules/students/students.routes.js';
-import facultyRoutes from './modules/faculty/faculty.routes.js';
+import feeRoutes from './modules/fees/fee.routes.js';
+import resultRoutes from './modules/results/result.routes.js';
+import scheduleRoutes from './modules/schedule/schedule.routes.js';
+import subjectRoutes from './modules/subjects/subject.routes.js';
+import announcementRoutes from './modules/announcements/announcement.routes.js';
+import studentRoutes from './modules/students/students.routes.js';
+import parentRoutes from './modules/parents/parent.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
 
 export function createApp(): express.Express {
@@ -49,10 +53,14 @@ export function createApp(): express.Express {
   app.use(API_PREFIX, createHealthRoutes(chatService));
   app.use(`${API_PREFIX}/whatsapp`, whatsappRoutes);
   app.use(`${API_PREFIX}/auth`, authRoutes);
-  app.use(`${API_PREFIX}/ai`, aiRoutes);
   app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
-  app.use(`${API_PREFIX}/students`, studentsRoutes);
-  app.use(`${API_PREFIX}/faculty`, facultyRoutes);
+  app.use(`${API_PREFIX}/fees`, feeRoutes);
+  app.use(`${API_PREFIX}/results`, resultRoutes);
+  app.use(`${API_PREFIX}/schedule`, scheduleRoutes);
+  app.use(`${API_PREFIX}/subjects`, subjectRoutes);
+  app.use(`${API_PREFIX}/announcements`, announcementRoutes);
+  app.use(`${API_PREFIX}/students`, studentRoutes);
+  app.use(`${API_PREFIX}/parents`, parentRoutes);
   app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 
   app.use(notFoundHandler);

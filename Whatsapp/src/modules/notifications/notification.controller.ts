@@ -69,4 +69,69 @@ export class NotificationController {
     const status = this.notificationService.queue.getQueueStatus();
     sendSuccess(res, status);
   };
+
+  createGeneralAnnouncement = async (req: Request, res: Response): Promise<void> => {
+    const notifications = await this.notificationService.createGeneralAnnouncement(req.body);
+    sendSuccess(res, {
+      created: notifications.length,
+      notifications: notifications.map((n) => ({ id: String(n._id), type: n.type, status: n.status })),
+    }, 201);
+  };
+
+  createHolidayNotice = async (req: Request, res: Response): Promise<void> => {
+    const notifications = await this.notificationService.createHolidayNotice(req.body);
+    sendSuccess(res, {
+      created: notifications.length,
+      notifications: notifications.map((n) => ({ id: String(n._id), type: n.type, status: n.status })),
+    }, 201);
+  };
+
+  markAsSent = async (req: Request, res: Response): Promise<void> => {
+    const id = String(req.params.id);
+    const notification = await this.notificationService.markAsSent(id);
+    if (!notification) {
+      sendSuccess(res, { error: 'Notification not found' }, 404);
+      return;
+    }
+    sendSuccess(res, { id: String(notification._id), status: notification.status });
+  };
+
+  markAsFailed = async (req: Request, res: Response): Promise<void> => {
+    const id = String(req.params.id);
+    const { reason } = req.body;
+    const notification = await this.notificationService.markAsFailed(id, reason);
+    if (!notification) {
+      sendSuccess(res, { error: 'Notification not found' }, 404);
+      return;
+    }
+    sendSuccess(res, { id: String(notification._id), status: notification.status });
+  };
+
+  cancelNotification = async (req: Request, res: Response): Promise<void> => {
+    const id = String(req.params.id);
+    const notification = await this.notificationService.cancelNotification(id);
+    if (!notification) {
+      sendSuccess(res, { error: 'Notification not found' }, 404);
+      return;
+    }
+    sendSuccess(res, { id: String(notification._id), status: notification.status });
+  };
+
+  getPendingNotifications = async (req: Request, res: Response): Promise<void> => {
+    const before = req.query.before as string | undefined;
+    const scheduledBefore = before ? new Date(before) : undefined;
+    const notifications = await this.notificationService.getPendingNotifications(scheduledBefore);
+    sendSuccess(res, {
+      notifications: notifications.map((n) => ({
+        id: String(n._id),
+        type: n.type,
+        recipient: n.recipient,
+        message: n.message,
+        status: n.status,
+        priority: n.priority,
+        scheduledFor: n.scheduledFor,
+      })),
+      total: notifications.length,
+    });
+  };
 }

@@ -70,3 +70,28 @@ export interface CategoryCountRecord {
   category: string;
   count: number;
 }
+
+export interface SubjectRecord {
+  id: string;
+  code: string;
+  name: string;
+  department: string;
+  semester: number;
+  credits: number;
+  type: 'theory' | 'lab' | 'elective';
+  isActive: boolean;
+}
+
+export interface AnnouncementRecord {
+  id: string;
+  title: string;
+  content: string;
+  audience: 'all' | 'students' | 'parents' | 'department';
+  department: string | null;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  isActive: boolean;
+  publishedAt: Date | null;
+  expiresAt: Date | null;
+  createdBy: string;
+  createdAt: Date;
+}
