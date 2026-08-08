@@ -1,6 +1,6 @@
 import { getContentType, type WAMessage } from 'baileys';
 import { isJidGroup, isJidNewsletter, isJidStatusBroadcast } from 'baileys';
-import type { MessageType } from '../../../database/models/Message.js';
+import type { MessageType } from '../../../database/models/Conversation.js';
 
 export interface ExtractedMessage {
   type: MessageType;

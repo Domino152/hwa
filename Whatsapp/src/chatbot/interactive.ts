@@ -2,13 +2,15 @@
  * WhatsApp interactive message sender.
  * Sends List Messages (dropdown menus) and Reply Buttons using Baileys.
  *
- * Note: WhatsApp deprecated the classic `buttonsMessage` for business accounts.
- * We use `interactiveMessage` with `nativeFlowMessage` for button-like actions,
- * and `listMessage` for dropdown menus. Both are supported by Baileys.
+ * Note: Baileys 6.x does not support `listMessage` / `interactiveMessage`
+ * through the high-level `sendMessage` content API (they fall through to
+ * media processing and throw "Invalid media type"). We build the raw proto
+ * message with `generateWAMessageFromContent` and relay it with
+ * `relayMessage`, which is the supported path for these types.
  */
 
 import type { WASocket } from 'baileys';
-import { proto } from 'baileys';
+import { proto, generateWAMessageFromContent } from 'baileys';
 import logger from '../shared/utils/logger.js';
 
 const interactiveLogger = logger.child({ module: 'interactive' });
@@ -43,7 +45,7 @@ export async function sendListMessage(
   },
 ): Promise<string | null> {
   try {
-    const result = await sock.sendMessage(jid, {
+    const message = proto.Message.fromObject({
       listMessage: {
         title: params.title,
         description: params.description,
@@ -59,9 +61,15 @@ export async function sendListMessage(
           })),
         })),
       },
-    } as any);
+    });
 
-    const messageId = result?.key?.id ?? null;
+    const fullMsg = generateWAMessageFromContent(jid, message, {
+      userJid: sock.user?.id ?? '',
+    });
+    const messageId = (await sock.relayMessage(jid, fullMsg.message!, {
+      messageId: fullMsg.key.id ?? undefined,
+    })) ?? null;
+
     interactiveLogger.debug({ jid, messageId }, 'List message sent');
     return messageId;
   } catch (err) {
@@ -92,7 +100,7 @@ export async function sendButtonsMessage(
       }),
     }));
 
-    const result = await sock.sendMessage(jid, {
+    const message = proto.Message.fromObject({
       interactiveMessage: {
         body: {
           text: params.text,
@@ -104,9 +112,15 @@ export async function sendButtonsMessage(
           buttons,
         },
       },
-    } as any);
+    });
 
-    const messageId = result?.key?.id ?? null;
+    const fullMsg = generateWAMessageFromContent(jid, message, {
+      userJid: sock.user?.id ?? '',
+    });
+    const messageId = (await sock.relayMessage(jid, fullMsg.message!, {
+      messageId: fullMsg.key.id ?? undefined,
+    })) ?? null;
+
     interactiveLogger.debug({ jid, messageId }, 'Buttons message sent');
     return messageId;
   } catch (err) {

@@ -1,6 +1,6 @@
 import type { IntegrationService } from '../../integration/integration.service.js';
 import { parseNaturalDate } from '../dateParser.js';
-import type { PublicContentCategory } from '../../database/models/PublicContent.js';
+import type { KnowledgeCategory } from '../../database/models/KnowledgeBase.js';
 import logger from '../../shared/utils/logger.js';
 
 const toolLogger = logger.child({ module: 'tool-executor' });
@@ -200,7 +200,7 @@ export class ToolExecutor {
     const category = String(args.category ?? '');
     if (!category) return { success: false, data: null, error: 'category is required' };
 
-    const result = await this.integration.publicInformation.getByCategory(category as PublicContentCategory);
+    const result = await this.integration.publicInformation.getByCategory(category as KnowledgeCategory);
 
     return {
       success: true,
@@ -237,7 +237,7 @@ export class ToolExecutor {
 
   private async getAnnouncements(args: Record<string, unknown>): Promise<ToolResult> {
     const category = args.category ? String(args.category) : 'events';
-    const result = await this.integration.publicInformation.getByCategory(category as PublicContentCategory);
+    const result = await this.integration.publicInformation.getByCategory(category as KnowledgeCategory);
 
     return {
       success: true,

@@ -1,4 +1,4 @@
-import { Schedule, HolidayOverride } from '../../database/models/Schedule.js';
+import { Schedule } from '../../database/models/Schedule.js';
 import type { IScheduleRepository } from '../schedule.repository.js';
 import type { ScheduleRecord, HolidayOverrideRecord } from '../types.js';
 
@@ -19,21 +19,6 @@ function toRecord(doc: {
     room: doc.room,
     type: doc.type,
     semester: doc.semester,
-    academicYear: doc.academicYear,
-  };
-}
-
-function toHolidayRecord(doc: {
-  _id: unknown; department: string; year: number; section: string;
-  date: Date; reason: string; academicYear: string;
-}): HolidayOverrideRecord {
-  return {
-    id: String(doc._id),
-    department: doc.department,
-    year: doc.year,
-    section: doc.section,
-    date: doc.date,
-    reason: doc.reason,
     academicYear: doc.academicYear,
   };
 }
@@ -144,14 +129,28 @@ export class MongoScheduleRepository implements IScheduleRepository {
     section: string;
     academicYear: string;
   }): Promise<HolidayOverrideRecord[]> {
-    const docs = await HolidayOverride.find({
+    const schedules = await Schedule.find({
       department: params.department,
       year: params.year,
       section: params.section,
       academicYear: params.academicYear,
-    }).sort({ date: 1 });
+      'holidays.0': { $exists: true },
+    });
 
-    return docs.map(toHolidayRecord);
+    const records: HolidayOverrideRecord[] = [];
+    for (const schedule of schedules) {
+      for (const holiday of schedule.holidays) {
+        records.push({
+          department: schedule.department,
+          year: schedule.year,
+          section: schedule.section,
+          date: holiday.date,
+          reason: holiday.reason,
+          academicYear: holiday.academicYear,
+        });
+      }
+    }
+    return records.sort((a, b) => a.date.getTime() - b.date.getTime());
   }
 
   async isHoliday(
@@ -166,30 +165,64 @@ export class MongoScheduleRepository implements IScheduleRepository {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const doc = await HolidayOverride.findOne({
+    const schedule = await Schedule.findOne({
       department,
       year,
       section,
       academicYear,
-      date: { $gte: startOfDay, $lte: endOfDay },
+      holidays: {
+        $elemMatch: {
+          date: { $gte: startOfDay, $lte: endOfDay },
+        },
+      },
     });
 
-    return doc ? toHolidayRecord(doc) : null;
+    if (!schedule) return null;
+
+    const holiday = schedule.holidays.find(
+      (h) => h.date >= startOfDay && h.date <= endOfDay,
+    );
+
+    if (!holiday) return null;
+
+    return {
+      department: schedule.department,
+      year: schedule.year,
+      section: schedule.section,
+      date: holiday.date,
+      reason: holiday.reason,
+      academicYear: holiday.academicYear,
+    };
   }
 
   async addHolidayOverride(record: HolidayOverrideRecord): Promise<HolidayOverrideRecord> {
-    const doc = await HolidayOverride.findOneAndUpdate(
+    const schedule = await Schedule.findOneAndUpdate(
       {
         department: record.department,
         year: record.year,
         section: record.section,
-        date: record.date,
         academicYear: record.academicYear,
       },
-      { $set: record },
+      {
+        $push: {
+          holidays: {
+            date: record.date,
+            reason: record.reason,
+            academicYear: record.academicYear,
+          },
+        },
+      },
       { new: true, upsert: true },
     );
-    return toHolidayRecord(doc);
+
+    return {
+      department: schedule.department,
+      year: schedule.year,
+      section: schedule.section,
+      date: record.date,
+      reason: record.reason,
+      academicYear: record.academicYear,
+    };
   }
 
   async removeHolidayOverride(params: {
@@ -204,13 +237,21 @@ export class MongoScheduleRepository implements IScheduleRepository {
     const endOfDay = new Date(params.date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const result = await HolidayOverride.deleteMany({
-      department: params.department,
-      year: params.year,
-      section: params.section,
-      academicYear: params.academicYear,
-      date: { $gte: startOfDay, $lte: endOfDay },
-    });
-    return result.deletedCount;
+    const result = await Schedule.updateMany(
+      {
+        department: params.department,
+        year: params.year,
+        section: params.section,
+        academicYear: params.academicYear,
+      },
+      {
+        $pull: {
+          holidays: {
+            date: { $gte: startOfDay, $lte: endOfDay },
+          },
+        },
+      },
+    );
+    return result.modifiedCount;
   }
 }

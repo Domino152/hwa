@@ -41,6 +41,7 @@ export class ChatService {
   private reconnectAttempts = 0;
   private userJid: string | null = null;
   private readonly logger: pino.Logger;
+  private readonly baileysLogger: pino.Logger;
   private readonly sessionDir: string;
   private readonly msgRetryCounterCache = new NodeCache();
   private inbox: InboxService | null = null;
@@ -48,6 +49,10 @@ export class ChatService {
   constructor(sessionDir?: string) {
     this.sessionDir = sessionDir ?? config.WA_SESSION_DIR;
     this.logger = logger.child({ module: 'whatsapp' });
+    this.baileysLogger = logger.child(
+      { module: 'whatsapp-baileys' },
+      { level: 'warn' },
+    );
   }
 
   setInboxService(inbox: InboxService): void {
@@ -66,7 +71,7 @@ export class ChatService {
     const { state, saveCreds } = await useMultiFileAuthState(this.sessionDir);
 
     this.sock = makeWASocket({
-      logger: this.logger as any,
+      logger: this.baileysLogger as any,
       auth: {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, this.logger as any),
@@ -74,6 +79,10 @@ export class ChatService {
       browser: Browsers.ubuntu('Chrome'),
       msgRetryCounterCache: this.msgRetryCounterCache as any,
       generateHighQualityLinkPreview: false,
+      markOnlineOnConnect: false,
+      syncFullHistory: false,
+      fireInitQueries: false,
+      shouldSyncHistoryMessage: () => false,
       getMessage: async (_key: WAMessageKey): Promise<WAMessageContent | undefined> => {
         return undefined;
       },

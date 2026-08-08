@@ -5,15 +5,24 @@ import type { IAIService } from './ai.types.js';
 /**
  * Create and export the AI service instance.
  *
- * In test environments, GEMINI_API_KEY may not be set.
- * We export a lazy getter so the module can still be imported without crashing.
+ * In test environments or when GEMINI_API_KEY is not set,
+ * we return null so the app can still start without AI features.
  */
 let _aiService: IAIService | null = null;
+let _initialized = false;
 
-export function getAIService(): IAIService {
-  if (!_aiService) {
+export function getAIService(): IAIService | null {
+  if (!_initialized) {
+    _initialized = true;
     const apiKey = config.GEMINI_API_KEY ?? '';
-    _aiService = new GeminiAIService({ apiKey });
+    if (!apiKey) {
+      return null;
+    }
+    try {
+      _aiService = new GeminiAIService({ apiKey });
+    } catch {
+      return null;
+    }
   }
   return _aiService;
 }

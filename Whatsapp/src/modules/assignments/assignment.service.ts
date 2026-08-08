@@ -61,7 +61,7 @@ export interface AssignmentSubmissionResult {
 export class AssignmentService {
   constructor(
     private readonly assignmentRepo: IAssignmentRepository,
-    private readonly submissionRepo: IAssignmentSubmissionRepository,
+    private readonly submissionRepo?: IAssignmentSubmissionRepository,
     private readonly userRepo?: IUserRepository,
   ) {}
 
@@ -172,7 +172,7 @@ export class AssignmentService {
       throw new ValidationError('Assignment is not accepting submissions');
     }
 
-    const existing = await this.submissionRepo.findByStudentAssignment(input.assignmentId, input.studentId);
+    const existing = await this.submissionRepo!.findByStudentAssignment(input.assignmentId, input.studentId);
     if (existing && existing.status !== 'returned') {
       throw new ValidationError('You have already submitted this assignment. Resubmit not allowed.');
     }
@@ -190,7 +190,7 @@ export class AssignmentService {
     let submission: AssignmentSubmissionRecord;
 
     if (existing && existing.status === 'returned') {
-      const updated = await this.submissionRepo.update(existing.id!, {
+      const updated = await this.submissionRepo!.update(existing.id!, {
         submissionDate: now,
         isLate,
         latePenalty,
@@ -205,7 +205,7 @@ export class AssignmentService {
       });
       submission = updated!;
     } else {
-      submission = await this.submissionRepo.create({
+      submission = await this.submissionRepo!.create({
         assignmentId: input.assignmentId,
         studentId: input.studentId,
         studentName,
@@ -232,30 +232,30 @@ export class AssignmentService {
   }
 
   async getSubmissionById(id: string): Promise<AssignmentSubmissionRecord> {
-    const record = await this.submissionRepo.findById(id);
+    const record = await this.submissionRepo!.findById(id);
     if (!record) throw new NotFoundError('Submission');
     return record;
   }
 
   async getSubmissionsByAssignment(assignmentId: string): Promise<AssignmentSubmissionRecord[]> {
-    return this.submissionRepo.findByAssignment(assignmentId);
+    return this.submissionRepo!.findByAssignment(assignmentId);
   }
 
   async getSubmissionsByStudent(studentId: string): Promise<AssignmentSubmissionRecord[]> {
-    return this.submissionRepo.findByStudent(studentId);
+    return this.submissionRepo!.findByStudent(studentId);
   }
 
   async getStudentSubmission(assignmentId: string, studentId: string): Promise<AssignmentSubmissionRecord | null> {
-    return this.submissionRepo.findByStudentAssignment(assignmentId, studentId);
+    return this.submissionRepo!.findByStudentAssignment(assignmentId, studentId);
   }
 
   async deleteSubmission(id: string): Promise<void> {
-    const existing = await this.submissionRepo.findById(id);
+    const existing = await this.submissionRepo!.findById(id);
     if (!existing) throw new NotFoundError('Submission');
     if (existing.status === 'graded') {
       throw new ValidationError('Cannot delete a graded submission');
     }
-    const deleted = await this.submissionRepo.delete(id);
+    const deleted = await this.submissionRepo!.delete(id);
     if (!deleted) throw new NotFoundError('Submission');
   }
 
@@ -264,7 +264,7 @@ export class AssignmentService {
   // ============================================================
 
   async gradeSubmission(id: string, input: GradeSubmissionInput): Promise<AssignmentSubmissionRecord> {
-    const existing = await this.submissionRepo.findById(id);
+    const existing = await this.submissionRepo!.findById(id);
     if (!existing) throw new NotFoundError('Submission');
 
     const assignment = await this.assignmentRepo.findById(existing.assignmentId);
@@ -277,18 +277,18 @@ export class AssignmentService {
 
     const grade = input.grade || computeGrade(effectiveMarks, assignment.maxMarks, assignment.passingMarks);
 
-    const graded = await this.submissionRepo.grade(id, effectiveMarks, grade, input.feedback ?? null, input.gradedBy);
+    const graded = await this.submissionRepo!.grade(id, effectiveMarks, grade, input.feedback ?? null, input.gradedBy);
     if (!graded) throw new NotFoundError('Submission after grading');
     return graded;
   }
 
   async returnSubmission(id: string): Promise<AssignmentSubmissionRecord> {
-    const existing = await this.submissionRepo.findById(id);
+    const existing = await this.submissionRepo!.findById(id);
     if (!existing) throw new NotFoundError('Submission');
     if (existing.status !== 'graded') {
       throw new ValidationError('Only graded submissions can be returned');
     }
-    const returned = await this.submissionRepo.returnSubmission(id);
+    const returned = await this.submissionRepo!.returnSubmission(id);
     if (!returned) throw new NotFoundError('Submission');
     return returned;
   }
@@ -298,7 +298,7 @@ export class AssignmentService {
   // ============================================================
 
   async getSubmissionStats(assignmentId: string) {
-    return this.submissionRepo.getSubmissionStats(assignmentId);
+    return this.submissionRepo!.getSubmissionStats(assignmentId);
   }
 }
 

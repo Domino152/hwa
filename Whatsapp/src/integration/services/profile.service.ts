@@ -3,7 +3,6 @@ import type { AttendanceIntegrationService } from './attendance.service.js';
 import type { FeeIntegrationService } from './fee.service.js';
 import type { ScheduleIntegrationService } from './schedule.service.js';
 import type { ResultIntegrationService } from './result.service.js';
-import type { DetailedResultIntegrationService } from './detailed-result.service.js';
 import type { StudentProfileResult } from '../types.js';
 
 /**
@@ -20,7 +19,6 @@ export class ProfileService {
     private readonly feesService: FeeIntegrationService,
     private readonly scheduleService: ScheduleIntegrationService,
     private readonly resultsService: ResultIntegrationService,
-    private readonly detailedResultsService: DetailedResultIntegrationService,
   ) {}
 
   async getStudentProfile(studentId: string): Promise<StudentProfileResult> {
@@ -31,7 +29,7 @@ export class ProfileService {
 
     const parent = await this.userRepo.findParentByStudentId(studentId);
 
-    const [attendance, fees, schedule, results, detailedResults] = await Promise.all([
+    const [attendance, fees, schedule, results] = await Promise.all([
       this.attendanceService.getByStudentId(studentId),
       this.feesService.getByStudentId(studentId),
       this.scheduleService.getByStudent({
@@ -40,14 +38,13 @@ export class ProfileService {
         section: student.section,
       }),
       this.resultsService.getByStudentId(studentId),
-      this.detailedResultsService.getByStudentId(studentId),
     ]);
 
     const summary = {
       attendancePercentage: attendance.overallPercentage,
       pendingFeeAmount: fees.fee?.remainingAmount ?? 0,
       cgpa: results.cgpa,
-      overallCgpa: detailedResults.cgpa.cgpa,
+      overallCgpa: results.cgpa,
       todayClassCount: schedule.entries.length,
     };
 
@@ -56,15 +53,13 @@ export class ProfileService {
       hasFees: fees.hasData,
       hasSchedule: schedule.hasData,
       hasResults: results.hasData,
-      hasDetailedResults: detailedResults.hasData,
+      hasDetailedResults: false,
       hasParent: !!parent,
     };
 
-    const currentSemester = detailedResults.cgpa.semesters.length > 0
-      ? Math.max(...detailedResults.cgpa.semesters.map((s) => s.semester))
-      : (results.hasData && results.results.length > 0
-        ? Math.ceil(results.results.length / 5) || 1
-        : 1);
+    const currentSemester = results.hasData && results.results.length > 0
+      ? Math.ceil(results.results.length / 5) || 1
+      : 1;
 
     return {
       student: {
@@ -79,7 +74,11 @@ export class ProfileService {
       fees,
       schedule,
       results,
-      detailedResults,
+      detailedResults: {
+        results: [],
+        cgpa: { cgpa: 0, totalCredits: 0, earnedCredits: 0, totalSubjects: 0, semesters: [] },
+        hasData: false,
+      },
       parent: parent
         ? {
             id: parent.id,

@@ -1,5 +1,4 @@
-import { Attendance } from '../models/Attendance.js';
-import { Fee } from '../models/Fee.js';
+import { DailyAttendance } from '../models/DailyAttendance.js';
 import { Schedule } from '../models/Schedule.js';
 import { Result } from '../models/Result.js';
 
@@ -8,20 +7,9 @@ const SEMESTER = 8;
 const ACADEMIC_YEAR = '2025-2026';
 
 const SEED_ATTENDANCE = [
-  { subject: 'DBMS', totalClasses: 50, attendedClasses: 45, percentage: 90 },
-  { subject: 'Java', totalClasses: 50, attendedClasses: 42, percentage: 84 },
-  { subject: 'Operating Systems', totalClasses: 50, attendedClasses: 37, percentage: 74 },
-];
-
-const SEED_FEES = [
-  {
-    feeType: 'Tuition Fee',
-    totalFee: 100000,
-    paidAmount: 85000,
-    remainingAmount: 15000,
-    dueDate: new Date('2026-08-15'),
-    status: 'partial' as const,
-  },
+  { subject: 'DBMS', totalClasses: 50, attendedClasses: 45 },
+  { subject: 'Java', totalClasses: 50, attendedClasses: 42 },
+  { subject: 'Operating Systems', totalClasses: 50, attendedClasses: 37 },
 ];
 
 const SEED_SCHEDULE = [
@@ -50,25 +38,48 @@ const SEED_RESULTS = [
   { subject: 'Operating Systems', marksObtained: 87, totalMarks: 100, grade: 'B+', cgpa: 8.7 },
 ];
 
+function generateAttendanceDates(totalClasses: number): Date[] {
+  const dates: Date[] = [];
+  const startDate = new Date('2026-01-05');
+  let current = new Date(startDate);
+  while (dates.length < totalClasses) {
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) {
+      dates.push(new Date(current));
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
 export async function seedAcademic(): Promise<void> {
   let attendanceCount = 0;
-  let feeCount = 0;
   let scheduleCount = 0;
   let resultCount = 0;
 
   for (const data of SEED_ATTENDANCE) {
-    const exists = await Attendance.findOne({ studentId: STUDENT_ID, subject: data.subject, semester: SEMESTER, academicYear: ACADEMIC_YEAR });
-    if (!exists) {
-      await Attendance.create({ ...data, studentId: STUDENT_ID, semester: SEMESTER, academicYear: ACADEMIC_YEAR });
-      attendanceCount++;
-    }
-  }
-
-  for (const data of SEED_FEES) {
-    const exists = await Fee.findOne({ studentId: STUDENT_ID, feeType: data.feeType, semester: SEMESTER, academicYear: ACADEMIC_YEAR });
-    if (!exists) {
-      await Fee.create({ ...data, studentId: STUDENT_ID, semester: SEMESTER, academicYear: ACADEMIC_YEAR });
-      feeCount++;
+    const dates = generateAttendanceDates(data.totalClasses);
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+      const status = i < data.attendedClasses ? 'present' : 'absent' as const;
+      const exists = await DailyAttendance.findOne({
+        studentId: STUDENT_ID,
+        subject: data.subject,
+        date,
+        semester: SEMESTER,
+        academicYear: ACADEMIC_YEAR,
+      });
+      if (!exists) {
+        await DailyAttendance.create({
+          studentId: STUDENT_ID,
+          subject: data.subject,
+          date,
+          status,
+          semester: SEMESTER,
+          academicYear: ACADEMIC_YEAR,
+        });
+        attendanceCount++;
+      }
     }
   }
 
@@ -89,7 +100,6 @@ export async function seedAcademic(): Promise<void> {
   }
 
   console.log(`✓ Attendance: ${attendanceCount} seeded`);
-  console.log(`✓ Fees: ${feeCount} seeded`);
   console.log(`✓ Schedule: ${scheduleCount} seeded`);
   console.log(`✓ Results: ${resultCount} seeded`);
 }

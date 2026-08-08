@@ -1,39 +1,49 @@
-import { Result } from '../../database/models/Result.js';
+import { Result, type IResult } from '../../database/models/Result.js';
 import type { IResultRepository } from '../result.repository.js';
 import type { ResultRecord } from '../types.js';
 
-function toRecord(doc: { studentId: string; semester: number; subject: string; marksObtained: number; totalMarks: number; grade: string; cgpa: number }): ResultRecord {
+function toRecord(doc: IResult): ResultRecord {
   return {
     studentId: doc.studentId,
     semester: doc.semester,
-    subject: doc.subject,
-    marksObtained: doc.marksObtained,
-    totalMarks: doc.totalMarks,
+    subject: doc.subjectCode,
+    marksObtained: doc.totalMarks,
+    totalMarks: doc.totalMax,
     grade: doc.grade,
-    cgpa: doc.cgpa,
+    cgpa: doc.cgpa ?? 0,
   };
 }
 
 export class MongoResultRepository implements IResultRepository {
   async findStudentResults(studentId: string): Promise<ResultRecord[]> {
-    const docs = await Result.find({ studentId }).sort({ subject: 1 });
+    const docs = await Result.find({ studentId }).sort({ subjectCode: 1 });
     return docs.map(toRecord);
   }
 
   async findByStudentAndSemester(studentId: string, semester: number, academicYear: string): Promise<ResultRecord[]> {
-    const docs = await Result.find({ studentId, semester, academicYear }).sort({ subject: 1 });
+    const docs = await Result.find({ studentId, semester, academicYear }).sort({ subjectCode: 1 });
     return docs.map(toRecord);
   }
 
   async findByExamType(studentId: string, examType: string, academicYear: string): Promise<ResultRecord[]> {
-    const docs = await Result.find({ studentId, examType, academicYear }).sort({ subject: 1 });
+    const docs = await Result.find({ studentId, examType, academicYear }).sort({ subjectCode: 1 });
     return docs.map(toRecord);
   }
 
   async upsertResult(record: ResultRecord & { examType: string; academicYear: string }): Promise<ResultRecord> {
     const doc = await Result.findOneAndUpdate(
-      { studentId: record.studentId, subject: record.subject, semester: record.semester, examType: record.examType, academicYear: record.academicYear },
-      { $set: record },
+      { studentId: record.studentId, subjectCode: record.subject, semester: record.semester, examType: record.examType, academicYear: record.academicYear },
+      { $set: {
+        studentId: record.studentId,
+        subjectCode: record.subject,
+        totalMarks: record.marksObtained,
+        totalMax: record.totalMarks,
+        grade: record.grade,
+        cgpa: record.cgpa,
+        semester: record.semester,
+        examType: record.examType,
+        academicYear: record.academicYear,
+      } },
       { new: true, upsert: true },
     );
     return toRecord(doc);
@@ -64,7 +74,7 @@ export class MongoResultRepository implements IResultRepository {
       {
         $group: {
           _id: '$subject',
-          averageMarks: { $avg: '$marksObtained' },
+          averageMarks: { $avg: '$totalMarks' },
           averageCgpa: { $avg: '$cgpa' },
           totalStudents: { $sum: 1 },
         },

@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 const PUBLIC_CONTENT_CATEGORIES = [
-  'about_hits', 'admissions', 'departments', 'courses', 'placements',
-  'hostel', 'transportation', 'scholarships', 'library', 'sports',
-  'events', 'contact', 'campus_map', 'faq',
+  'campus_info', 'academic', 'fees', 'exam_results', 'hostel',
+  'library', 'placements', 'events', 'rules', 'guidelines',
+  'procedures', 'faqs', 'courses', 'faculty',
 ] as const;
 
 export const createPublicContentSchema = z.object({

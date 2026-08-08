@@ -1,13 +1,3 @@
-import type {
-  IFeeRepository,
-  IFeeStructureRepository,
-  IInstallmentRepository,
-  IPaymentRepository,
-  IReceiptRepository,
-  IScholarshipRepository,
-  IFineRepository,
-  IPendingAmountRepository,
-} from '../../repositories/fee.repository.js';
 import type { IUserRepository } from '../../repositories/user.repository.js';
 import type {
   FeeRecord,
@@ -22,15 +12,19 @@ import type {
   PaymentMethod,
   PaymentStatus,
   InstallmentStatus,
+  FeeCategory,
+  FeeFrequency,
+  ScholarshipType,
+  FineReason,
 } from '../../repositories/types.js';
 import { NotFoundError, ValidationError } from '../../shared/utils/errors.js';
 
 export interface CreateFeeStructureInput {
   code: string;
   name: string;
-  category: FeeStructureRecord['category'];
+  category: FeeCategory;
   amount: number;
-  frequency: FeeStructureRecord['frequency'];
+  frequency: FeeFrequency;
   department: string;
   program: string;
   semester: number | null;
@@ -75,7 +69,7 @@ export interface RecordPaymentInput {
 export interface CreateScholarshipInput {
   studentId: string;
   scholarshipName: string;
-  type: ScholarshipRecord['type'];
+  type: ScholarshipType;
   amount: number;
   percentage?: number | null;
   provider: string;
@@ -89,7 +83,7 @@ export interface CreateScholarshipInput {
 
 export interface CreateFineInput {
   studentId: string;
-  reason: FineRecord['reason'];
+  reason: FineReason;
   description: string;
   amount: number;
   dueDate: Date;
@@ -116,16 +110,86 @@ export interface FeeReminderService {
   }): Promise<unknown>;
 }
 
+export interface IFeeRepository {
+  findLatestFeeByStudentId(studentId: string): Promise<FeeRecord | null>;
+  findByStudentAll(studentId: string): Promise<FeeRecord[]>;
+  findByStudentAndSemester(studentId: string, semester: number, academicYear: string): Promise<FeeRecord[]>;
+  updatePayment(studentId: string, feeType: string, semester: number, academicYear: string, paidAmount: number): Promise<FeeRecord>;
+  findOverdueFees(academicYear: string): Promise<FeeRecord[]>;
+  getDepartmentFeeSummary(department: string, semester: number, academicYear: string): Promise<{ totalFees: number; totalPaid: number; totalPending: number }>;
+}
+
+export interface IFeeStructureRepository {
+  findByCode(code: string, academicYear: string): Promise<FeeStructureRecord | null>;
+  findById(id: string): Promise<FeeStructureRecord | null>;
+  create(record: Omit<FeeStructureRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<FeeStructureRecord>;
+  update(id: string, update: Partial<FeeStructureRecord>): Promise<FeeStructureRecord | null>;
+  delete(id: string): Promise<boolean>;
+  findByDepartmentProgram(department: string, program: string, academicYear: string): Promise<FeeStructureRecord[]>;
+  findByDepartmentSemester(department: string, semester: number, academicYear: string): Promise<FeeStructureRecord[]>;
+  findAll(filter: { department?: string; academicYear?: string; isActive?: boolean }): Promise<FeeStructureRecord[]>;
+}
+
+export interface IInstallmentRepository {
+  create(record: Omit<InstallmentRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<InstallmentRecord>;
+  createMany(records: Array<Omit<InstallmentRecord, 'id' | 'createdAt' | 'updatedAt'>>): Promise<number>;
+  findById(id: string): Promise<InstallmentRecord | null>;
+  findByStudent(studentId: string, academicYear?: string): Promise<InstallmentRecord[]>;
+  findByStudentAndSemester(studentId: string, semester: number, academicYear: string): Promise<InstallmentRecord[]>;
+  recordPayment(id: string, amount: number, paidDate: Date): Promise<InstallmentRecord | null>;
+  delete(id: string): Promise<boolean>;
+  findOverdueByDate(date: Date): Promise<InstallmentRecord[]>;
+}
+
+export interface IPaymentRepository {
+  getNextReceiptNumber(): Promise<string>;
+  create(record: Omit<PaymentRecord, 'id' | 'createdAt'>): Promise<PaymentRecord>;
+  findByReceiptNumber(receiptNumber: string): Promise<PaymentRecord | null>;
+  findByStudent(studentId: string, limit?: number): Promise<PaymentRecord[]>;
+  findByStudentAndSemester(studentId: string, semester: number, academicYear: string): Promise<PaymentRecord[]>;
+  refundPayment(id: string): Promise<PaymentRecord | null>;
+  getPaymentHistory(studentId: string): Promise<PaymentHistoryRecord>;
+}
+
+export interface IReceiptRepository {
+  create(record: Omit<ReceiptRecord, 'id'>): Promise<ReceiptRecord>;
+  findByReceiptNumber(receiptNumber: string): Promise<ReceiptRecord | null>;
+  findByStudent(studentId: string, limit?: number): Promise<ReceiptRecord[]>;
+}
+
+export interface IScholarshipRepository {
+  create(record: Omit<ScholarshipRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<ScholarshipRecord>;
+  findById(id: string): Promise<ScholarshipRecord | null>;
+  findByStudent(studentId: string, academicYear?: string): Promise<ScholarshipRecord[]>;
+  findActiveByStudent(studentId: string, semester: number, academicYear: string): Promise<ScholarshipRecord[]>;
+  revokeScholarship(id: string, reason: string): Promise<ScholarshipRecord | null>;
+  delete(id: string): Promise<boolean>;
+}
+
+export interface IFineRepository {
+  create(record: Omit<FineRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<FineRecord>;
+  findById(id: string): Promise<FineRecord | null>;
+  findByStudent(studentId: string, academicYear?: string): Promise<FineRecord[]>;
+  findActiveByStudent(studentId: string, semester: number, academicYear: string): Promise<FineRecord[]>;
+  waive(id: string, waivedBy: string, reason: string, amount: number): Promise<FineRecord | null>;
+  recordPayment(id: string, amount: number): Promise<FineRecord | null>;
+  delete(id: string): Promise<boolean>;
+}
+
+export interface IPendingAmountRepository {
+  getPendingSummary(studentId: string, semester: number, academicYear: string): Promise<PendingAmountRecord>;
+}
+
 export class FeeService {
   constructor(
-    private readonly legacyRepo: IFeeRepository,
-    private readonly structureRepo: IFeeStructureRepository,
-    private readonly installmentRepo: IInstallmentRepository,
-    private readonly paymentRepo: IPaymentRepository,
-    private readonly receiptRepo: IReceiptRepository,
-    private readonly scholarshipRepo: IScholarshipRepository,
-    private readonly fineRepo: IFineRepository,
-    private readonly pendingRepo: IPendingAmountRepository,
+    private readonly legacyRepo?: IFeeRepository,
+    private readonly structureRepo?: IFeeStructureRepository,
+    private readonly installmentRepo?: IInstallmentRepository,
+    private readonly paymentRepo?: IPaymentRepository,
+    private readonly receiptRepo?: IReceiptRepository,
+    private readonly scholarshipRepo?: IScholarshipRepository,
+    private readonly fineRepo?: IFineRepository,
+    private readonly pendingRepo?: IPendingAmountRepository,
     private readonly userRepo?: IUserRepository,
     private readonly reminderService?: FeeReminderService,
   ) {}
@@ -135,15 +199,15 @@ export class FeeService {
   // ============================================================
 
   async getLatestFeeByStudentId(studentId: string): Promise<FeeRecord | null> {
-    return this.legacyRepo.findLatestFeeByStudentId(studentId);
+    return this.legacyRepo!.findLatestFeeByStudentId(studentId);
   }
 
   async getAllFeesByStudent(studentId: string): Promise<FeeRecord[]> {
-    return this.legacyRepo.findByStudentAll(studentId);
+    return this.legacyRepo!.findByStudentAll(studentId);
   }
 
   async getFeesByStudentSemester(studentId: string, semester: number, academicYear: string): Promise<FeeRecord[]> {
-    return this.legacyRepo.findByStudentAndSemester(studentId, semester, academicYear);
+    return this.legacyRepo!.findByStudentAndSemester(studentId, semester, academicYear);
   }
 
   async updateLegacyPayment(
@@ -153,20 +217,20 @@ export class FeeService {
     academicYear: string,
     paidAmount: number,
   ): Promise<FeeRecord> {
-    const existing = await this.legacyRepo.findByStudentAndSemester(studentId, semester, academicYear);
+    const existing = await this.legacyRepo!.findByStudentAndSemester(studentId, semester, academicYear);
     const fee = existing.find((f) => f.feeType === feeType);
     if (!fee) throw new NotFoundError(`Fee record for ${feeType}`);
-    const updated = await this.legacyRepo.updatePayment(studentId, feeType, semester, academicYear, paidAmount);
+    const updated = await this.legacyRepo!.updatePayment(studentId, feeType, semester, academicYear, paidAmount);
     if (!updated) throw new NotFoundError('Fee record after update');
     return updated;
   }
 
   async getOverdueFees(academicYear: string): Promise<FeeRecord[]> {
-    return this.legacyRepo.findOverdueFees(academicYear);
+    return this.legacyRepo!.findOverdueFees(academicYear);
   }
 
   async getDepartmentSummary(department: string, semester: number, academicYear: string) {
-    return this.legacyRepo.getDepartmentFeeSummary(department, semester, academicYear);
+    return this.legacyRepo!.getDepartmentFeeSummary(department, semester, academicYear);
   }
 
   // ============================================================
@@ -174,11 +238,11 @@ export class FeeService {
   // ============================================================
 
   async createFeeStructure(input: CreateFeeStructureInput): Promise<FeeStructureRecord> {
-    const existing = await this.structureRepo.findByCode(input.code, input.academicYear);
+    const existing = await this.structureRepo!.findByCode(input.code, input.academicYear);
     if (existing) {
       throw new ValidationError(`Fee structure with code ${input.code} already exists for ${input.academicYear}`);
     }
-    return this.structureRepo.create({
+    return this.structureRepo!.create({
       ...input,
       isActive: true,
       description: input.description ?? null,
@@ -186,19 +250,19 @@ export class FeeService {
   }
 
   async getFeeStructureByCode(code: string, academicYear: string): Promise<FeeStructureRecord> {
-    const record = await this.structureRepo.findByCode(code, academicYear);
+    const record = await this.structureRepo!.findByCode(code, academicYear);
     if (!record) throw new NotFoundError(`Fee structure ${code} for ${academicYear}`);
     return record;
   }
 
   async getFeeStructureById(id: string): Promise<FeeStructureRecord> {
-    const record = await this.structureRepo.findById(id);
+    const record = await this.structureRepo!.findById(id);
     if (!record) throw new NotFoundError('Fee structure');
     return record;
   }
 
   async getFeeStructuresByProgram(department: string, program: string, academicYear: string): Promise<FeeStructureRecord[]> {
-    return this.structureRepo.findByDepartmentProgram(department, program, academicYear);
+    return this.structureRepo!.findByDepartmentProgram(department, program, academicYear);
   }
 
   async getFeeStructuresByDepartmentSemester(
@@ -206,21 +270,21 @@ export class FeeService {
     semester: number,
     academicYear: string,
   ): Promise<FeeStructureRecord[]> {
-    return this.structureRepo.findByDepartmentSemester(department, semester, academicYear);
+    return this.structureRepo!.findByDepartmentSemester(department, semester, academicYear);
   }
 
   async getAllFeeStructures(filter: { department?: string; academicYear?: string; isActive?: boolean }): Promise<FeeStructureRecord[]> {
-    return this.structureRepo.findAll(filter);
+    return this.structureRepo!.findAll(filter);
   }
 
   async updateFeeStructure(id: string, update: Partial<FeeStructureRecord>): Promise<FeeStructureRecord> {
-    const updated = await this.structureRepo.update(id, update);
+    const updated = await this.structureRepo!.update(id, update);
     if (!updated) throw new NotFoundError('Fee structure');
     return updated;
   }
 
   async deleteFeeStructure(id: string): Promise<void> {
-    const deleted = await this.structureRepo.delete(id);
+    const deleted = await this.structureRepo!.delete(id);
     if (!deleted) throw new NotFoundError('Fee structure');
   }
 
@@ -229,12 +293,12 @@ export class FeeService {
   // ============================================================
 
   async createInstallment(input: CreateInstallmentInput): Promise<InstallmentRecord> {
-    const structure = await this.structureRepo.findById(input.feeStructureId);
+    const structure = await this.structureRepo!.findById(input.feeStructureId);
     if (!structure) throw new NotFoundError('Fee structure');
 
     const status = computeInstallmentStatus(input.dueDate, 0, input.amount);
 
-    return this.installmentRepo.create({
+    return this.installmentRepo!.create({
       installmentNumber: input.installmentNumber,
       studentId: input.studentId,
       feeStructureId: input.feeStructureId,
@@ -256,7 +320,7 @@ export class FeeService {
 
   async bulkCreateInstallments(input: BulkInstallmentInput): Promise<number> {
     const structures = await Promise.all(
-      input.installments.map((i) => this.structureRepo.findById(i.feeStructureId)),
+      input.installments.map((i) => this.structureRepo!.findById(i.feeStructureId)),
     );
     const records = input.installments.map((inst, idx) => {
       const structure = structures[idx];
@@ -283,11 +347,11 @@ export class FeeService {
         notes: null,
       };
     });
-    return this.installmentRepo.createMany(records);
+    return this.installmentRepo!.createMany(records);
   }
 
   async getInstallmentsByStudent(studentId: string, academicYear?: string): Promise<InstallmentRecord[]> {
-    return this.installmentRepo.findByStudent(studentId, academicYear);
+    return this.installmentRepo!.findByStudent(studentId, academicYear);
   }
 
   async getInstallmentsByStudentSemester(
@@ -295,11 +359,11 @@ export class FeeService {
     semester: number,
     academicYear: string,
   ): Promise<InstallmentRecord[]> {
-    return this.installmentRepo.findByStudentAndSemester(studentId, semester, academicYear);
+    return this.installmentRepo!.findByStudentAndSemester(studentId, semester, academicYear);
   }
 
   async deleteInstallment(id: string): Promise<void> {
-    const deleted = await this.installmentRepo.delete(id);
+    const deleted = await this.installmentRepo!.delete(id);
     if (!deleted) throw new NotFoundError('Installment');
   }
 
@@ -308,7 +372,7 @@ export class FeeService {
   // ============================================================
 
   async recordPayment(input: RecordPaymentInput): Promise<{ payment: PaymentRecord; receipt: ReceiptRecord; installment: InstallmentRecord }> {
-    const installment = await this.installmentRepo.findById(input.installmentId);
+    const installment = await this.installmentRepo!.findById(input.installmentId);
     if (!installment) throw new NotFoundError('Installment');
     if (input.studentId !== installment.studentId) {
       throw new ValidationError('Student does not match installment');
@@ -328,9 +392,9 @@ export class FeeService {
       if (student) studentName = student.fullName;
     }
 
-    const receiptNumber = await this.paymentRepo.getNextReceiptNumber();
+    const receiptNumber = await this.paymentRepo!.getNextReceiptNumber();
 
-    const payment = await this.paymentRepo.create({
+    const payment = await this.paymentRepo!.create({
       receiptNumber,
       studentId: input.studentId,
       installmentId: input.installmentId,
@@ -346,14 +410,14 @@ export class FeeService {
       remarks: input.remarks ?? null,
     });
 
-    const updatedInstallment = await this.installmentRepo.recordPayment(
+    const updatedInstallment = await this.installmentRepo!.recordPayment(
       input.installmentId,
       input.amount,
       payment.paidAt,
     );
     if (!updatedInstallment) throw new NotFoundError('Installment after update');
 
-    const receipt = await this.receiptRepo.create({
+    const receipt = await this.receiptRepo!.create({
       receiptNumber,
       studentId: input.studentId,
       studentName,
@@ -377,13 +441,13 @@ export class FeeService {
   }
 
   async getPaymentByReceipt(receiptNumber: string): Promise<PaymentRecord> {
-    const payment = await this.paymentRepo.findByReceiptNumber(receiptNumber);
+    const payment = await this.paymentRepo!.findByReceiptNumber(receiptNumber);
     if (!payment) throw new NotFoundError(`Payment with receipt ${receiptNumber}`);
     return payment;
   }
 
   async getPaymentsByStudent(studentId: string, limit?: number): Promise<PaymentRecord[]> {
-    return this.paymentRepo.findByStudent(studentId, limit);
+    return this.paymentRepo!.findByStudent(studentId, limit);
   }
 
   async getPaymentsByStudentSemester(
@@ -391,23 +455,23 @@ export class FeeService {
     semester: number,
     academicYear: string,
   ): Promise<PaymentRecord[]> {
-    return this.paymentRepo.findByStudentAndSemester(studentId, semester, academicYear);
+    return this.paymentRepo!.findByStudentAndSemester(studentId, semester, academicYear);
   }
 
   async refundPayment(paymentId: string): Promise<PaymentRecord> {
-    const updated = await this.paymentRepo.refundPayment(paymentId);
+    const updated = await this.paymentRepo!.refundPayment(paymentId);
     if (!updated) throw new NotFoundError('Payment');
     return updated;
   }
 
   async getReceipt(receiptNumber: string): Promise<ReceiptRecord> {
-    const receipt = await this.receiptRepo.findByReceiptNumber(receiptNumber);
+    const receipt = await this.receiptRepo!.findByReceiptNumber(receiptNumber);
     if (!receipt) throw new NotFoundError(`Receipt ${receiptNumber}`);
     return receipt;
   }
 
   async getReceiptsByStudent(studentId: string, limit?: number): Promise<ReceiptRecord[]> {
-    return this.receiptRepo.findByStudent(studentId, limit);
+    return this.receiptRepo!.findByStudent(studentId, limit);
   }
 
   // ============================================================
@@ -415,7 +479,7 @@ export class FeeService {
   // ============================================================
 
   async getPendingSummary(studentId: string, semester: number, academicYear: string): Promise<PendingAmountRecord> {
-    return this.pendingRepo.getPendingSummary(studentId, semester, academicYear);
+    return this.pendingRepo!.getPendingSummary(studentId, semester, academicYear);
   }
 
   // ============================================================
@@ -430,7 +494,7 @@ export class FeeService {
       throw new ValidationError('Percentage must be between 0 and 100');
     }
 
-    return this.scholarshipRepo.create({
+    return this.scholarshipRepo!.create({
       studentId: input.studentId,
       scholarshipName: input.scholarshipName,
       type: input.type,
@@ -449,27 +513,27 @@ export class FeeService {
   }
 
   async getScholarshipById(id: string): Promise<ScholarshipRecord> {
-    const record = await this.scholarshipRepo.findById(id);
+    const record = await this.scholarshipRepo!.findById(id);
     if (!record) throw new NotFoundError('Scholarship');
     return record;
   }
 
   async getScholarshipsByStudent(studentId: string, academicYear?: string): Promise<ScholarshipRecord[]> {
-    return this.scholarshipRepo.findByStudent(studentId, academicYear);
+    return this.scholarshipRepo!.findByStudent(studentId, academicYear);
   }
 
   async getActiveScholarships(studentId: string, semester: number, academicYear: string): Promise<ScholarshipRecord[]> {
-    return this.scholarshipRepo.findActiveByStudent(studentId, semester, academicYear);
+    return this.scholarshipRepo!.findActiveByStudent(studentId, semester, academicYear);
   }
 
   async revokeScholarship(id: string, reason: string): Promise<ScholarshipRecord> {
-    const updated = await this.scholarshipRepo.revokeScholarship(id, reason);
+    const updated = await this.scholarshipRepo!.revokeScholarship(id, reason);
     if (!updated) throw new NotFoundError('Scholarship');
     return updated;
   }
 
   async deleteScholarship(id: string): Promise<void> {
-    const deleted = await this.scholarshipRepo.delete(id);
+    const deleted = await this.scholarshipRepo!.delete(id);
     if (!deleted) throw new NotFoundError('Scholarship');
   }
 
@@ -481,7 +545,7 @@ export class FeeService {
     if (input.amount <= 0) {
       throw new ValidationError('Fine amount must be greater than zero');
     }
-    return this.fineRepo.create({
+    return this.fineRepo!.create({
       studentId: input.studentId,
       reason: input.reason,
       description: input.description,
@@ -503,21 +567,21 @@ export class FeeService {
   }
 
   async getFineById(id: string): Promise<FineRecord> {
-    const record = await this.fineRepo.findById(id);
+    const record = await this.fineRepo!.findById(id);
     if (!record) throw new NotFoundError('Fine');
     return record;
   }
 
   async getFinesByStudent(studentId: string, academicYear?: string): Promise<FineRecord[]> {
-    return this.fineRepo.findByStudent(studentId, academicYear);
+    return this.fineRepo!.findByStudent(studentId, academicYear);
   }
 
   async getActiveFines(studentId: string, semester: number, academicYear: string): Promise<FineRecord[]> {
-    return this.fineRepo.findActiveByStudent(studentId, semester, academicYear);
+    return this.fineRepo!.findActiveByStudent(studentId, semester, academicYear);
   }
 
   async waiveFine(id: string, waivedBy: string, reason: string, waivedAmount?: number): Promise<FineRecord> {
-    const fine = await this.fineRepo.findById(id);
+    const fine = await this.fineRepo!.findById(id);
     if (!fine) throw new NotFoundError('Fine');
 
     const amount = waivedAmount ?? fine.remainingAmount;
@@ -530,13 +594,13 @@ export class FeeService {
       );
     }
 
-    const updated = await this.fineRepo.waive(id, waivedBy, reason, amount);
+    const updated = await this.fineRepo!.waive(id, waivedBy, reason, amount);
     if (!updated) throw new NotFoundError('Fine after waiver');
     return updated;
   }
 
   async recordFinePayment(input: RecordFinePaymentInput): Promise<FineRecord> {
-    const fine = await this.fineRepo.findById(input.fineId);
+    const fine = await this.fineRepo!.findById(input.fineId);
     if (!fine) throw new NotFoundError('Fine');
     if (input.amount <= 0) {
       throw new ValidationError('Payment amount must be greater than zero');
@@ -546,13 +610,13 @@ export class FeeService {
         `Payment amount (${input.amount}) exceeds remaining (${fine.remainingAmount})`,
       );
     }
-    const updated = await this.fineRepo.recordPayment(input.fineId, input.amount);
+    const updated = await this.fineRepo!.recordPayment(input.fineId, input.amount);
     if (!updated) throw new NotFoundError('Fine after payment');
     return updated;
   }
 
   async deleteFine(id: string): Promise<void> {
-    const deleted = await this.fineRepo.delete(id);
+    const deleted = await this.fineRepo!.delete(id);
     if (!deleted) throw new NotFoundError('Fine');
   }
 
@@ -561,7 +625,7 @@ export class FeeService {
   // ============================================================
 
   async getPaymentHistory(studentId: string): Promise<PaymentHistoryRecord> {
-    return this.paymentRepo.getPaymentHistory(studentId);
+    return this.paymentRepo!.getPaymentHistory(studentId);
   }
 
   // ============================================================
@@ -573,7 +637,7 @@ export class FeeService {
       return { remindersSent: 0, totalOverdue: 0 };
     }
 
-    const installments = await this.installmentRepo.findByStudentAndSemester(studentId, semester, academicYear);
+    const installments = await this.installmentRepo!.findByStudentAndSemester(studentId, semester, academicYear);
     const now = new Date();
     const overdue = installments.filter(
       (i) => (i.status === 'overdue' || i.status === 'due') && i.dueDate < now && i.remainingAmount > 0,
@@ -601,7 +665,7 @@ export class FeeService {
       return { studentsProcessed: 0, totalReminders: 0 };
     }
 
-    const studentIds = await this.installmentRepo.findOverdueByDate(new Date());
+    const studentIds = await this.installmentRepo!.findOverdueByDate(new Date());
     const uniqueStudentIds = [...new Set(studentIds.map((i) => i.studentId))];
 
     let totalReminders = 0;

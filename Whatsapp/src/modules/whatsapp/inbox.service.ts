@@ -1,6 +1,5 @@
 import type { WAMessage } from 'baileys';
-import { Conversation, type IConversation } from '../../database/models/Conversation.js';
-import { Message, type IMessage } from '../../database/models/Message.js';
+import { Conversation, type IConversation, type IMessage } from '../../database/models/Conversation.js';
 import { emitIncomingMessage } from '../../sockets/index.js';
 import { ChatService } from './chat.service.js';
 import { extractPhoneFromJid } from './utils/phone.js';
@@ -36,7 +35,7 @@ export interface ConversationListResult {
     contactName?: string;
     lastMessage: string;
     lastMessageAt: string;
-    lastMessageDirection: 'incoming' | 'outgoing';
+    lastMessageDirection: 'incoming' | 'outgoing' | null;
     unreadCount: number;
   }>;
   total: number;
@@ -86,10 +85,7 @@ export class InboxService {
         timestamp,
       });
 
-      const savedMessage = await Message.create({
-        conversationId: conversation._id,
-        phone,
-        jid,
+      const messageData: IMessage = {
         messageId,
         direction: 'incoming',
         type,
@@ -97,8 +93,16 @@ export class InboxService {
         status: 'received',
         timestamp,
         fromMe: false,
-        ...(pushName ? { pushName } : {}),
-      });
+        pushName: pushName ?? null,
+        requestId: null,
+      };
+
+      const updatedConversation = await Conversation.addMessage(
+        String(conversation._id),
+        messageData,
+      );
+
+      const savedMessage = updatedConversation?.messages[updatedConversation.messages.length - 1];
 
       autoReplyLogger.info(
         { phone, messageId, type, contentLength: content.length },
@@ -106,7 +110,7 @@ export class InboxService {
       );
 
       const payload: IncomingMessagePayload = {
-        id: String(savedMessage._id),
+        id: savedMessage?.messageId ?? messageId,
         messageId,
         phone,
         jid,
@@ -170,15 +174,21 @@ export class InboxService {
         }
       }
 
-      await Conversation.updateOne(
-        { _id: conversation._id },
-        {
-          $set: {
-            lastMessage: replyText,
-            lastMessageAt: new Date(),
-            lastMessageDirection: 'outgoing',
-          },
-        },
+      const outgoingMessageData: IMessage = {
+        messageId: result.messageId,
+        direction: 'outgoing',
+        type: 'text',
+        content: replyText,
+        status: 'sent',
+        timestamp: new Date(),
+        fromMe: true,
+        pushName: null,
+        requestId,
+      };
+
+      await Conversation.addMessage(
+        String(conversation._id),
+        outgoingMessageData,
       );
     } catch (err) {
       autoReplyLogger.error(
@@ -258,31 +268,30 @@ export class InboxService {
   ): Promise<MessageListResult> {
     const skip = (page - 1) * limit;
 
-    const conversation = await Conversation.findOne({ phone }).lean();
+    const conversation = await Conversation.findOne({ phone })
+      .select('messages phone')
+      .lean();
     if (!conversation) {
       return { messages: [], total: 0, page, limit };
     }
 
-    const [messages, total] = await Promise.all([
-      Message.find({ conversationId: conversation._id })
-        .sort({ timestamp: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Message.countDocuments({ conversationId: conversation._id }),
-    ]);
+    const allMessages = (conversation.messages || [])
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    const total = allMessages.length;
+    const paginatedMessages = allMessages.slice(skip, skip + limit);
 
     return {
-      messages: messages.map((m) => ({
-        id: String(m._id),
+      messages: paginatedMessages.map((m) => ({
+        id: m.messageId,
         messageId: m.messageId,
-        conversationId: String(m.conversationId),
-        phone: m.phone,
+        conversationId: String(conversation._id),
+        phone: conversation.phone,
         direction: m.direction,
         type: m.type,
         content: m.content,
         status: m.status,
-        timestamp: m.timestamp.toISOString(),
+        timestamp: new Date(m.timestamp).toISOString(),
         fromMe: m.fromMe,
         ...(m.pushName ? { pushName: m.pushName } : {}),
       })),
@@ -324,10 +333,7 @@ export class InboxService {
     error?: string;
   }): Promise<IMessage | null> {
     try {
-      const messageDoc = await Message.create({
-        conversationId: params.conversationId,
-        phone: params.phone,
-        jid: params.jid,
+      const messageData: IMessage = {
         messageId: params.messageId,
         direction: 'outgoing',
         type: params.type,
@@ -335,9 +341,18 @@ export class InboxService {
         status: params.status,
         timestamp: params.timestamp,
         fromMe: true,
-        ...(params.requestId ? { requestId: params.requestId } : {}),
-      });
-      return messageDoc;
+        pushName: null,
+        requestId: params.requestId ?? null,
+      };
+
+      const updatedConversation = await Conversation.addMessage(
+        String(params.conversationId),
+        messageData,
+      );
+
+      if (!updatedConversation) return null;
+
+      return updatedConversation.messages[updatedConversation.messages.length - 1] ?? null;
     } catch (err) {
       autoReplyLogger.error(
         { err, phone: params.phone, messageId: params.messageId },

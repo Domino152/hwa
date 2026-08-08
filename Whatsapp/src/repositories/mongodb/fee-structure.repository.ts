@@ -1,6 +1,16 @@
 import { FeeStructure } from '../../database/models/FeeStructure.js';
 import type { FeeStructureRecord } from '../types.js';
-import type { IFeeStructureRepository } from '../fee.repository.js';
+
+interface IFeeStructureRepository {
+  create(record: Omit<FeeStructureRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<FeeStructureRecord>;
+  findByCode(code: string, academicYear: string): Promise<FeeStructureRecord | null>;
+  findById(id: string): Promise<FeeStructureRecord | null>;
+  findByDepartmentProgram(department: string, program: string, academicYear: string): Promise<FeeStructureRecord[]>;
+  findByDepartmentSemester(department: string, semester: number, academicYear: string): Promise<FeeStructureRecord[]>;
+  findAll(filter: { department?: string; academicYear?: string; isActive?: boolean }): Promise<FeeStructureRecord[]>;
+  update(id: string, update: Partial<FeeStructureRecord>): Promise<FeeStructureRecord | null>;
+  delete(id: string): Promise<boolean>;
+}
 
 function toRecord(doc: {
   _id: { toString(): string };

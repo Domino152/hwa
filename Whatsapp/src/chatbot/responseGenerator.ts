@@ -1,7 +1,7 @@
 import { IntentName, PRIVATE_INTENTS, type ChatbotContext, type AuthenticatedUserInfo } from './intents.js';
 import { config } from '../config/index.js';
 import { integration } from '../integration/index.js';
-import type { PublicContentCategory } from '../database/models/PublicContent.js';
+import type { KnowledgeCategory } from '../database/models/KnowledgeBase.js';
 import { parseNaturalDate, type ParsedDate } from './dateParser.js';
 import {
   attendanceCard,
@@ -231,7 +231,7 @@ async function handleProfile(studentId: string): Promise<string> {
 }
 
 async function handleAnnouncements(): Promise<string> {
-  const result = await integration.publicInformation.getByCategory('events' as PublicContentCategory);
+  const result = await integration.publicInformation.getByCategory('events' as KnowledgeCategory);
 
   if (!result.hasData) {
     return card('📢 Announcements', [
@@ -287,7 +287,7 @@ async function handlePublicInformation(
   text: string,
   _classification?: ClassificationResult,
 ): Promise<string> {
-  const category = integration.publicInformation.resolveCategory(text) as PublicContentCategory;
+  const category = integration.publicInformation.resolveCategory(text) as KnowledgeCategory;
   const result = await integration.publicInformation.getByCategory(category);
 
   if (!result.hasData) {

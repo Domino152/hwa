@@ -1,4 +1,4 @@
-import mongoose, { Schema, type Document, type Model, type ObjectId } from 'mongoose';
+﻿import mongoose, { Schema, type Document, type Model, type ObjectId } from 'mongoose';
 
 export type StudentStatus = 'active' | 'graduated' | 'suspended';
 export type Gender = 'male' | 'female' | 'other';
@@ -18,6 +18,7 @@ export interface IStudent extends Document {
   semester: number;
   section: string;
   batch: string;
+  sectionId: ObjectId;
   advisor: string;
   parentId: ObjectId | null;
   whatsappNumber: string | null;
@@ -32,6 +33,7 @@ export interface IStudentModel extends Model<IStudent> {
   findByStudentId(studentId: string): Promise<IStudent | null>;
   findByRegisterNumber(registerNumber: string): Promise<IStudent | null>;
   findByUserId(userId: string): Promise<IStudent | null>;
+  findBySectionId(sectionId: string): Promise<IStudent[]>;
 }
 
 const studentSchema = new Schema<IStudent, IStudentModel>(
@@ -50,6 +52,7 @@ const studentSchema = new Schema<IStudent, IStudentModel>(
     semester: { type: Number, required: true, min: 1, max: 12, index: true },
     section: { type: String, required: true, trim: true },
     batch: { type: String, required: true, trim: true },
+    sectionId: { type: Schema.Types.ObjectId, ref: 'Section', required: true, index: true },
     advisor: { type: String, required: true, trim: true },
     parentId: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     whatsappNumber: { type: String, default: null, unique: true, sparse: true },
@@ -59,6 +62,9 @@ const studentSchema = new Schema<IStudent, IStudentModel>(
   },
   { timestamps: true },
 );
+
+studentSchema.index({ department: 1, semester: 1 });
+studentSchema.index({ status: 1, isActive: 1 });
 
 studentSchema.statics.findByStudentId = function (studentId: string) {
   return this.findOne({ studentId, isActive: true });
@@ -70,6 +76,10 @@ studentSchema.statics.findByRegisterNumber = function (registerNumber: string) {
 
 studentSchema.statics.findByUserId = function (userId: string) {
   return this.findOne({ userId, isActive: true });
+};
+
+studentSchema.statics.findBySectionId = function (sectionId: string) {
+  return this.find({ sectionId, isActive: true }).sort({ rollNumber: 1 });
 };
 
 export const Student = mongoose.model<IStudent, IStudentModel>('Student', studentSchema);

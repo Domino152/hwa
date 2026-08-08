@@ -14,6 +14,7 @@ const PRIORITY_MAP: Record<NotificationType, NotificationPriority> = {
   holiday_notice: 'normal',
   timetable_update: 'normal',
   general_announcement: 'normal',
+  ai_response: 'normal',
 };
 
 export interface CreateNotificationInput {
@@ -379,6 +380,7 @@ export class NotificationService {
         holiday_notice: typeMap['holiday_notice'] ?? 0,
         timetable_update: typeMap['timetable_update'] ?? 0,
         general_announcement: typeMap['general_announcement'] ?? 0,
+        ai_response: typeMap['ai_response'] ?? 0,
       },
     };
   }

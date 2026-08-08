@@ -1,8 +1,7 @@
-export { MongoAttendanceRepository } from './attendance.repository.js';
-export { MongoFeeRepository } from './fee.repository.js';
 export { MongoScheduleRepository } from './schedule.repository.js';
 export { MongoResultRepository } from './result.repository.js';
 export { MongoUserRepository } from './user.repository.js';
-export { MongoPublicContentRepository } from './public-content.repository.js';
 export { MongoSubjectRepository } from './subject.repository.js';
 export { MongoAnnouncementRepository } from './announcement.repository.js';
+export { MongoAssignmentRepository } from './assignment.repository.js';
+export { MongoFeeStructureRepository } from './fee-structure.repository.js';

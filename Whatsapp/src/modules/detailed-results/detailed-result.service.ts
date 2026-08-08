@@ -1,4 +1,3 @@
-import type { IDetailedResultRepository } from '../../repositories/detailed-result.repository.js';
 import type { ISubjectRepository } from '../../repositories/subject.repository.js';
 import type {
   DetailedResultRecord,
@@ -73,14 +72,28 @@ export function computeTotals(input: {
   return { totalMarks, totalMax, percentage };
 }
 
+export interface IDetailedResultRepository {
+  findByStudent(studentId: string, academicYear?: string): Promise<DetailedResultRecord[]>;
+  findByStudentSemester(studentId: string, semester: number, academicYear: string): Promise<DetailedResultRecord[]>;
+  findByStudentSubject(studentId: string, subjectCode: string, academicYear: string): Promise<DetailedResultRecord[]>;
+  findBySubject(subjectCode: string, semester: number, academicYear: string): Promise<DetailedResultRecord[]>;
+  upsertResult(record: DetailedResultRecord): Promise<DetailedResultRecord>;
+  upsertMany(records: DetailedResultRecord[]): Promise<number>;
+  deleteResult(studentId: string, subjectCode: string, semester: number, academicYear: string): Promise<number>;
+  getSemesterGpa(studentId: string, semester: number, academicYear: string): Promise<SemesterGpaResult | null>;
+  getCgpa(studentId: string): Promise<CgpaResult>;
+  getSubjectStats(subjectCode: string, semester: number, academicYear: string): Promise<SubjectResultStats | null>;
+  publishResults(studentId: string, semester: number, academicYear: string): Promise<number>;
+}
+
 export class DetailedResultService {
   constructor(
-    private readonly repo: IDetailedResultRepository,
-    private readonly subjectRepo: ISubjectRepository,
+    private readonly repo?: IDetailedResultRepository,
+    private readonly subjectRepo?: ISubjectRepository,
   ) {}
 
   async getByStudent(studentId: string, academicYear?: string): Promise<DetailedResultRecord[]> {
-    return this.repo.findByStudent(studentId, academicYear);
+    return this.repo!.findByStudent(studentId, academicYear);
   }
 
   async getByStudentSemester(
@@ -88,7 +101,7 @@ export class DetailedResultService {
     semester: number,
     academicYear: string,
   ): Promise<DetailedResultRecord[]> {
-    return this.repo.findByStudentSemester(studentId, semester, academicYear);
+    return this.repo!.findByStudentSemester(studentId, semester, academicYear);
   }
 
   async getByStudentSubject(
@@ -96,7 +109,7 @@ export class DetailedResultService {
     subjectCode: string,
     academicYear: string,
   ): Promise<DetailedResultRecord[]> {
-    return this.repo.findByStudentSubject(studentId, subjectCode, academicYear);
+    return this.repo!.findByStudentSubject(studentId, subjectCode, academicYear);
   }
 
   async getBySubject(
@@ -104,11 +117,11 @@ export class DetailedResultService {
     semester: number,
     academicYear: string,
   ): Promise<DetailedResultRecord[]> {
-    return this.repo.findBySubject(subjectCode, semester, academicYear);
+    return this.repo!.findBySubject(subjectCode, semester, academicYear);
   }
 
   async create(input: DetailedResultInput): Promise<DetailedResultRecord> {
-    const subject = await this.subjectRepo.findByCode(input.subjectCode.toUpperCase());
+    const subject = await this.subjectRepo!.findByCode(input.subjectCode.toUpperCase());
     if (!subject) {
       throw new NotFoundError(`Subject not found: ${input.subjectCode}`);
     }
@@ -165,7 +178,7 @@ export class DetailedResultService {
       remarks: input.remarks ?? null,
     };
 
-    return this.repo.upsertResult(record);
+    return this.repo!.upsertResult(record);
   }
 
   async bulkCreate(records: DetailedResultInput[]): Promise<{ created: number; failed: number }> {
@@ -181,7 +194,7 @@ export class DetailedResultService {
       }
     }
 
-    const created = await this.repo.upsertMany(fullRecords);
+    const created = await this.repo!.upsertMany(fullRecords);
     return { created, failed };
   }
 
@@ -191,7 +204,7 @@ export class DetailedResultService {
     semester: number,
     academicYear: string,
   ): Promise<number> {
-    const deleted = await this.repo.deleteResult(
+    const deleted = await this.repo!.deleteResult(
       studentId,
       subjectCode,
       semester,
@@ -210,11 +223,11 @@ export class DetailedResultService {
     semester: number,
     academicYear: string,
   ): Promise<SemesterGpaResult | null> {
-    return this.repo.getSemesterGpa(studentId, semester, academicYear);
+    return this.repo!.getSemesterGpa(studentId, semester, academicYear);
   }
 
   async getCgpa(studentId: string): Promise<CgpaResult> {
-    return this.repo.getCgpa(studentId);
+    return this.repo!.getCgpa(studentId);
   }
 
   async getSubjectStats(
@@ -222,7 +235,7 @@ export class DetailedResultService {
     semester: number,
     academicYear: string,
   ): Promise<SubjectResultStats | null> {
-    return this.repo.getSubjectStats(subjectCode, semester, academicYear);
+    return this.repo!.getSubjectStats(subjectCode, semester, academicYear);
   }
 
   async publishResults(
@@ -230,12 +243,12 @@ export class DetailedResultService {
     semester: number,
     academicYear: string,
   ): Promise<number> {
-    const existing = await this.repo.findByStudentSemester(studentId, semester, academicYear);
+    const existing = await this.repo!.findByStudentSemester(studentId, semester, academicYear);
     if (existing.length === 0) {
       throw new NotFoundError(
         `No results found for student ${studentId}, semester ${semester}, ${academicYear}`,
       );
     }
-    return this.repo.publishResults(studentId, semester, academicYear);
+    return this.repo!.publishResults(studentId, semester, academicYear);
   }
 }

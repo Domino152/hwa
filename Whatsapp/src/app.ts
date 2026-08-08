@@ -25,8 +25,7 @@ import parentRoutes from './modules/parents/parent.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
 import assignmentRoutes from './modules/assignments/assignment.routes.js';
 import publicInfoRoutes from './modules/public-info/public-info.routes.js';
-import { createAIRoutes } from './modules/ai/index.js';
-import { getAIService } from './modules/ai/index.js';
+import { createAIRoutes, getAIService } from './modules/ai/index.js';
 
 export function createApp(): express.Express {
   const app = express();
@@ -70,7 +69,11 @@ app.use(`${API_PREFIX}/results`, resultRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
   app.use(`${API_PREFIX}/assignments`, assignmentRoutes);
   app.use(`${API_PREFIX}/public-info`, publicInfoRoutes);
-  app.use(`${API_PREFIX}/ai`, createAIRoutes(getAIService()));
+
+  const aiService = getAIService();
+  if (aiService) {
+    app.use(`${API_PREFIX}/ai`, createAIRoutes(aiService));
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

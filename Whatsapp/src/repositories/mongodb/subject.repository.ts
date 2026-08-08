@@ -103,29 +103,29 @@ export class MongoSubjectRepository implements ISubjectRepository {
     const mappedResults = results.map((r) => ({
       studentId: r.studentId,
       semester: r.semester,
-      marksObtained: r.marksObtained,
-      totalMarks: r.totalMarks,
+      marksObtained: r.totalMarks,
+      totalMarks: r.totalMax,
       grade: r.grade,
-      cgpa: r.cgpa,
+      cgpa: r.cgpa ?? 0,
       examType: r.examType,
       academicYear: r.academicYear,
     }));
 
     const totalStudents = results.length;
     const averageMarks = totalStudents > 0
-      ? Math.round(results.reduce((sum, r) => sum + r.marksObtained, 0) / totalStudents)
+      ? Math.round(results.reduce((sum, r) => sum + r.totalMarks, 0) / totalStudents)
       : 0;
     const averagePercentage = totalStudents > 0
-      ? Math.round(results.reduce((sum, r) => sum + (r.marksObtained / r.totalMarks) * 100, 0) / totalStudents)
+      ? Math.round(results.reduce((sum, r) => sum + (r.totalMarks / r.totalMax) * 100, 0) / totalStudents)
       : 0;
     const highestMarks = totalStudents > 0
-      ? Math.max(...results.map((r) => r.marksObtained))
+      ? Math.max(...results.map((r) => r.totalMarks))
       : 0;
     const lowestMarks = totalStudents > 0
-      ? Math.min(...results.map((r) => r.marksObtained))
+      ? Math.min(...results.map((r) => r.totalMarks))
       : 0;
     const passRate = totalStudents > 0
-      ? Math.round((results.filter((r) => (r.marksObtained / r.totalMarks) * 100 >= 40).length / totalStudents) * 100)
+      ? Math.round((results.filter((r) => (r.totalMarks / r.totalMax) * 100 >= 40).length / totalStudents) * 100)
       : 0;
 
     return {

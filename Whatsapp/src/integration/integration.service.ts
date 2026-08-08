@@ -2,7 +2,6 @@ import type { AttendanceIntegrationService } from './services/attendance.service
 import type { FeeIntegrationService } from './services/fee.service.js';
 import type { ScheduleIntegrationService } from './services/schedule.service.js';
 import type { ResultIntegrationService } from './services/result.service.js';
-import type { DetailedResultIntegrationService } from './services/detailed-result.service.js';
 import type { PublicInformationService } from './services/public-information.service.js';
 import type { ProfileService } from './services/profile.service.js';
 import type { StudentIntegrationService } from './services/student-integration.service.js';
@@ -23,7 +22,6 @@ export class IntegrationService {
     readonly fees: FeeIntegrationService,
     readonly schedule: ScheduleIntegrationService,
     readonly results: ResultIntegrationService,
-    readonly detailedResults: DetailedResultIntegrationService,
     readonly publicInformation: PublicInformationService,
     readonly profile: ProfileService,
     private readonly userRepo: IUserRepository,
