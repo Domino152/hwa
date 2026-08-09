@@ -99,7 +99,10 @@ export class MessageRouter {
     );
 
     if (this.isButtonClick(text)) {
-      routerLogger.debug({ phone: context.phone, type: 'button_click' }, 'routing → button path');
+      routerLogger.info(
+        { phone: context.phone, text: text.substring(0, 50) },
+        'gemini_skipped_reason:deterministic_interactive_action',
+      );
       return this.routeButtonClick(text, fullContext, start);
     }
 
@@ -116,6 +119,10 @@ export class MessageRouter {
       classification.intent === 'login'
     ) {
       if (classification.intent !== 'unknown') {
+        routerLogger.info(
+          { phone: context.phone, intent: classification.intent, confidence: classification.confidence },
+          'gemini_skipped_reason:deterministic_nlp_match',
+        );
         return this.routeKnownIntent(classification, fullContext, start);
       }
     }
@@ -138,12 +145,20 @@ export class MessageRouter {
   ): Promise<RouteResult> {
     const intentName = text.replace('intent:', '') as IntentName;
 
-    routerLogger.debug({ intentName }, 'Routing button click');
+    routerLogger.info(
+      { phone: context.phone, action: intentName },
+      'interactive_action_received',
+    );
 
     const isPrivate = PRIVATE_INTENTS.includes(intentName);
 
     if (isPrivate && !context.isAuthenticated) {
       const response = loginRequiredCard(`${config.LOGIN_PORTAL_URL}?phone=${context.phone}`);
+
+      routerLogger.info(
+        { phone: context.phone, action: intentName, reason: 'unauthenticated' },
+        'interactive_action_blocked',
+      );
 
       return {
         intent: intentName,
@@ -162,7 +177,10 @@ export class MessageRouter {
       addHistoryEntry(context.phone, { role: 'bot', text: response.substring(0, 200), intent: intentName, timestamp: Date.now() });
 
       const latencyMs = Date.now() - start;
-      routerLogger.info({ phone: context.phone, intent: intentName, routedVia: 'button', latencyMs }, 'Button click routed');
+      routerLogger.info(
+        { phone: context.phone, intent: intentName, routedVia: 'button', latencyMs },
+        'interactive_action_completed',
+      );
 
       return {
         intent: intentName,
@@ -172,7 +190,7 @@ export class MessageRouter {
         routedVia: 'button',
       };
     } catch (error) {
-      routerLogger.error({ error, intentName }, 'Button click handling failed');
+      routerLogger.error({ error, intentName }, 'interactive_action_failed');
       return this.routeToAI(text, context, start);
     }
   }

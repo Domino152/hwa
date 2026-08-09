@@ -170,4 +170,117 @@ describe('MessageRouter', () => {
       expect(result.suggestedActions!.length).toBeGreaterThan(0);
     });
   });
+
+  describe('button clicks bypass Gemini', () => {
+    it('routes intent:attendance without calling Gemini', async () => {
+      vi.mocked(integration.attendance.getByStudentId).mockResolvedValue({
+        hasData: false,
+        overallPercentage: 0,
+        records: [],
+      });
+
+      const result = await router.route('intent:attendance', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Attendance);
+      expect(result.response).toBeDefined();
+    });
+
+    it('routes intent:fees without calling Gemini', async () => {
+      vi.mocked(integration.fees.getByStudentId).mockResolvedValue({
+        hasData: false,
+        fee: null,
+      });
+
+      const result = await router.route('intent:fees', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Fees);
+    });
+
+    it('routes intent:schedule without calling Gemini', async () => {
+      vi.mocked(integration.schedule.getByStudent).mockResolvedValue({
+        hasData: false,
+        entries: [],
+        dayOfWeek: 'Monday',
+      });
+
+      const result = await router.route('intent:schedule', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Schedule);
+    });
+
+    it('routes intent:results without calling Gemini', async () => {
+      vi.mocked(integration.results.getByStudentId).mockResolvedValue({
+        hasData: false,
+        results: [],
+        cgpa: 0,
+      });
+
+      const result = await router.route('intent:results', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Results);
+    });
+
+    it('routes intent:announcements without calling Gemini', async () => {
+      vi.mocked(integration.publicInformation.getByCategory).mockResolvedValue({
+        hasData: false,
+        entries: [],
+        category: 'events',
+      });
+
+      const result = await router.route('intent:announcements', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Announcements);
+    });
+
+    it('routes intent:profile without calling Gemini', async () => {
+      vi.mocked(integration.getStudentProfile).mockResolvedValue({
+        hasData: false,
+        student: null,
+      });
+
+      const result = await router.route('intent:profile', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Profile);
+    });
+
+    it('routes intent:help without calling Gemini', async () => {
+      const result = await router.route('intent:help', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Help);
+    });
+
+    it('routes intent:greeting without calling Gemini', async () => {
+      const result = await router.route('intent:greeting', { phone: '123' });
+
+      expect(result.routedVia).toBe('button');
+      expect(result.intent).toBe(IntentName.Greeting);
+    });
+  });
+
+  describe('natural language still routes correctly', () => {
+    it('routes "Hi" through NLP', async () => {
+      const result = await router.route('Hi', { phone: '123' });
+      expect(result.routedVia).toBe('nlp');
+      expect(result.intent).toBe(IntentName.Greeting);
+    });
+
+    it('routes "Help" through NLP', async () => {
+      const result = await router.route('Help', { phone: '123' });
+      expect(result.routedVia).toBe('nlp');
+      expect(result.intent).toBe(IntentName.Help);
+    });
+
+    it('routes "login" through NLP', async () => {
+      const result = await router.route('login', { phone: '123' });
+      expect(result.routedVia).toBe('nlp');
+      expect(result.intent).toBe(IntentName.Login);
+    });
+  });
 });

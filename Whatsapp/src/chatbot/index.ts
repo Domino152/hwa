@@ -15,6 +15,8 @@ export {
   sendButtonsMessage,
   sendSuggestedActions,
   buildMainMenuList,
+  buildGreetingMenu,
+  buildHelpMenu,
   getSuggestedActions,
   type ButtonOption,
   type ListSection,

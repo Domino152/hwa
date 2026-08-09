@@ -3,7 +3,12 @@ import { Conversation, type IConversation, type IMessage } from '../../database/
 import { emitIncomingMessage } from '../../sockets/index.js';
 import { ChatService } from './chat.service.js';
 import { extractPhoneFromJid } from './utils/phone.js';
-import { chatbotService } from '../../chatbot/index.js';
+import {
+  chatbotService,
+  buildHelpMenu,
+  type ChatbotResponse,
+} from '../../chatbot/index.js';
+import { integration } from '../../integration/index.js';
 import {
   shouldProcessMessage,
   extractMessageContent,
@@ -151,10 +156,21 @@ export class InboxService {
   ): Promise<void> {
     try {
       const chatbotResult = await chatbotService.processMessage(userMessage, { phone, originalText: userMessage });
-      const replyText = chatbotResult.response;
-
       const requestId = `auto-reply-${Date.now()}`;
-      const result = await this.chatService.sendMessage(jid, replyText, requestId);
+
+      autoReplyLogger.info(
+        { phone, intent: chatbotResult.intent, routedVia: chatbotResult.intent },
+        'Chatbot reply processing',
+      );
+
+      // For greeting and help: send interactive list menu (single message, no text+buttons)
+      if (chatbotResult.intent === 'greeting' || chatbotResult.intent === 'help') {
+        await this.sendInteractiveMenu(jid, phone, chatbotResult, requestId);
+        return;
+      }
+
+      // For other intents: send text response + optional suggested actions
+      const result = await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
 
       autoReplyLogger.info(
         { phone, messageId: result.messageId, intent: chatbotResult.intent },
@@ -178,7 +194,7 @@ export class InboxService {
         messageId: result.messageId,
         direction: 'outgoing',
         type: 'text',
-        content: replyText,
+        content: chatbotResult.response,
         status: 'sent',
         timestamp: new Date(),
         fromMe: true,
@@ -195,6 +211,78 @@ export class InboxService {
         { err, phone },
         'Failed to send chatbot reply (incoming message still saved)',
       );
+    }
+  }
+
+  /**
+   * Send an interactive list menu for greeting/help intents.
+   * For greeting: sends text greeting first, then list menu.
+   * For help: sends only the list menu.
+   */
+  private async sendInteractiveMenu(
+    jid: string,
+    phone: string,
+    chatbotResult: ChatbotResponse,
+    requestId: string,
+  ): Promise<void> {
+    try {
+      const conversation = await Conversation.findOne({ phone });
+      if (!conversation) return;
+
+      // For greeting: send the personalized text first
+      if (chatbotResult.intent === 'greeting') {
+        const textResult = await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
+
+        const outgoingTextData: IMessage = {
+          messageId: textResult.messageId,
+          direction: 'outgoing',
+          type: 'text',
+          content: chatbotResult.response,
+          status: 'sent',
+          timestamp: new Date(),
+          fromMe: true,
+          pushName: null,
+          requestId,
+        };
+        await Conversation.addMessage(String(conversation._id), outgoingTextData);
+      }
+
+      // Send the interactive list menu
+      const userData = await integration.findUserByPhone(phone);
+      const menu = buildHelpMenu(!!userData);
+
+      const listResult = await this.chatService.sendListMessage(jid, menu);
+
+      autoReplyLogger.info(
+        { phone, intent: chatbotResult.intent, messageId: listResult },
+        'interactive_menu_sent',
+      );
+
+      // Record the list menu as an outgoing message
+      const outgoingMenuData: IMessage = {
+        messageId: listResult ?? `menu-${Date.now()}`,
+        direction: 'outgoing',
+        type: 'text',
+        content: `[Interactive Menu: ${chatbotResult.intent}]`,
+        status: 'sent',
+        timestamp: new Date(),
+        fromMe: true,
+        pushName: null,
+        requestId,
+      };
+      await Conversation.addMessage(String(conversation._id), outgoingMenuData);
+    } catch (err) {
+      autoReplyLogger.error(
+        { err, phone, intent: chatbotResult.intent },
+        'Failed to send interactive menu, falling back to text',
+      );
+
+      // Fallback: send text response
+      try {
+        await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
+      } catch (fallbackErr) {
+        autoReplyLogger.error({ err: fallbackErr, phone }, 'Fallback text reply also failed');
+      }
     }
   }
 

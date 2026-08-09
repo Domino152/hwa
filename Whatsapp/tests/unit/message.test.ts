@@ -129,6 +129,111 @@ describe('Message Utility', () => {
       expect(result.type).toBe('other');
       expect(result.content).toBe('');
     });
+
+    it('extracts buttonsResponseMessage content', () => {
+      const msg = {
+        message: {
+          buttonsResponseMessage: {
+            selectedButtonId: 'intent:attendance',
+          },
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('intent:attendance');
+    });
+
+    it('extracts listResponseMessage content', () => {
+      const msg = {
+        message: {
+          listResponseMessage: {
+            selectedRowId: 'intent:fees',
+          },
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('intent:fees');
+    });
+
+    it('extracts interactiveResponseMessage with nativeFlowResponseMessage', () => {
+      const msg = {
+        message: {
+          interactiveResponseMessage: {
+            nativeFlowResponseMessage: {
+              paramsJson: JSON.stringify({ id: 'intent:schedule' }),
+            },
+          },
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('intent:schedule');
+    });
+
+    it('extracts interactiveResponseMessage with selected field', () => {
+      const msg = {
+        message: {
+          interactiveResponseMessage: {
+            nativeFlowResponseMessage: {
+              paramsJson: JSON.stringify({ selected: 'intent:results' }),
+            },
+          },
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('intent:results');
+    });
+
+    it('handles malformed interactiveResponseMessage gracefully', () => {
+      const msg = {
+        message: {
+          interactiveResponseMessage: {
+            nativeFlowResponseMessage: {
+              paramsJson: 'not-valid-json',
+            },
+          },
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('not-valid-json');
+    });
+
+    it('handles interactiveResponseMessage without paramsJson', () => {
+      const msg = {
+        message: {
+          interactiveResponseMessage: {
+            nativeFlowResponseMessage: {},
+          },
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('other');
+    });
+
+    it('handles missing buttonsResponseMessage selectedButtonId', () => {
+      const msg = {
+        message: {
+          buttonsResponseMessage: {},
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('');
+    });
+
+    it('handles missing listResponseMessage selectedRowId', () => {
+      const msg = {
+        message: {
+          listResponseMessage: {},
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('');
+    });
   });
 
   describe('getMessageTimestamp', () => {

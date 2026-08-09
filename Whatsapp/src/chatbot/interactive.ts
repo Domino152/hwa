@@ -7,6 +7,11 @@
  * media processing and throw "Invalid media type"). We build the raw proto
  * message with `generateWAMessageFromContent` and relay it with
  * `relayMessage`, which is the supported path for these types.
+ *
+ * IMPORTANT: The `listMessage` format is the most compatible interactive
+ * format for WhatsApp Web. The `nativeFlowMessage` buttons format may show
+ * "This message couldn't load" on WhatsApp Web. Always prefer list messages
+ * for menus.
  */
 
 import type { WASocket } from 'baileys';
@@ -150,6 +155,7 @@ export async function sendSuggestedActions(
 /**
  * Build the main navigation list message.
  * Shows all available modules as a dropdown menu.
+ * Uses listMessage format which is the most compatible on WhatsApp Web.
  */
 export function buildMainMenuList(isAuthenticated: boolean): {
   title: string;
@@ -203,8 +209,51 @@ export function buildMainMenuList(isAuthenticated: boolean): {
 }
 
 /**
+ * Build a greeting menu with a personalized welcome message.
+ * Returns both the text greeting and the list menu params.
+ */
+export function buildGreetingMenu(userName: string, isFirstTime: boolean): {
+  greetingText: string;
+  menu: {
+    title: string;
+    description: string;
+    buttonText: string;
+    sections: ListSection[];
+  };
+} {
+  const greetingText = isFirstTime
+    ? `👋 *Welcome, ${userName}!*\n\nI'm your *College AI Assistant*.\nHow can I help you today?`
+    : `👋 *Welcome back, ${userName}!*\n\nHow can I help you today?`;
+
+  return {
+    greetingText,
+    menu: buildMainMenuList(true),
+  };
+}
+
+/**
+ * Build a help menu as a list message.
+ * Returns the list menu params for sending via sendListMessage.
+ */
+export function buildHelpMenu(isAuthenticated: boolean): {
+  title: string;
+  description: string;
+  buttonText: string;
+  sections: ListSection[];
+} {
+  const menu = buildMainMenuList(isAuthenticated);
+  return {
+    ...menu,
+    description: 'Choose an option below, or type your question naturally.\n\n_Example: "What is my DBMS attendance?"_',
+  };
+}
+
+/**
  * Get suggested quick-action buttons for a given intent.
  * These appear as quick-reply suggestions after the response.
+ *
+ * NOTE: greeting and help intents now use the list menu (sendListMessage)
+ * instead of text + buttons. They are excluded from suggested actions.
  */
 export function getSuggestedActions(intent: string, isAuthenticated: boolean): ButtonOption[] {
   const common: ButtonOption[] = [
@@ -224,7 +273,6 @@ export function getSuggestedActions(intent: string, isAuthenticated: boolean): B
   ];
 
   const intentSuggestions: Record<string, ButtonOption[]> = {
-    greeting: isAuthenticated ? privateActions.slice(0, 3) : publicActions,
     attendance: [
       { id: 'intent:schedule', text: '📅 Today\'s Classes' },
       { id: 'intent:results', text: '📝 Results' },
@@ -250,7 +298,6 @@ export function getSuggestedActions(intent: string, isAuthenticated: boolean): B
       { id: 'intent:announcements', text: '📢 Announcements' },
       ...common,
     ],
-    help: isAuthenticated ? privateActions : publicActions,
     unknown: isAuthenticated ? privateActions.slice(0, 3) : publicActions,
   };
 
