@@ -5,6 +5,27 @@ import { generateResponse } from '../../src/chatbot/responseGenerator.js';
 import { IntentName } from '../../src/chatbot/intents.js';
 import { ChatbotService } from '../../src/chatbot/chatbot.service.js';
 import { integration } from '../../src/integration/index.js';
+import { authService } from '../../src/modules/auth/index.js';
+import { clearSession } from '../../src/chatbot/sessionManager.js';
+
+vi.mock('../../src/modules/auth/index.js', () => ({
+  authService: {
+    generateLoginToken: vi.fn().mockResolvedValue({ tokenId: 'tok-1', rawToken: 'abc123def456' }),
+    deactivateWhatsAppSessionByPhone: vi.fn().mockResolvedValue(undefined),
+    redeemLoginToken: vi.fn(),
+    login: vi.fn(),
+    linkWhatsApp: vi.fn(),
+    unlinkWhatsApp: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/chatbot/sessionManager.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/chatbot/sessionManager.js')>();
+  return {
+    ...actual,
+    clearSession: vi.fn(),
+  };
+});
 
 vi.mock('../../src/integration/index.js', () => ({
   integration: {
@@ -502,5 +523,153 @@ describe('ChatbotService', () => {
     expect(result.response).toContain('Attendance Summary');
     expect(result.response).toContain('DBMS');
     expect(result.response).not.toContain('Authentication Required');
+  });
+});
+
+describe('Authentication Acceptance Test', () => {
+  const service = new ChatbotService();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authService.generateLoginToken).mockResolvedValue({ tokenId: 'tok-1', rawToken: 'securetoken123' });
+    vi.mocked(authService.deactivateWhatsAppSessionByPhone).mockResolvedValue(undefined);
+    vi.mocked(clearSession).mockImplementation(() => {});
+    vi.mocked(integration.attendance.getByStudentId).mockResolvedValue({ records: [], overallPercentage: 0, hasData: false });
+    vi.mocked(integration.fees.getByStudentId).mockResolvedValue({ fee: null, hasData: false });
+    vi.mocked(integration.schedule.getByStudent).mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false });
+    vi.mocked(integration.results.getByStudentId).mockResolvedValue({ results: [], cgpa: 0, hasData: false });
+  });
+
+  it('login → hello → personalized greeting → logout → hello → login-required, NO personalized content', async () => {
+    const phone = '919999999999';
+    const authenticatedUser = {
+      id: 'u1',
+      fullName: 'Arjun Sharma',
+      role: 'student' as const,
+      studentId: '22CSE001',
+      department: 'CSE',
+      year: 4,
+      section: 'A',
+    };
+
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(authenticatedUser);
+
+    const r1 = await service.processMessage('Hello', { phone });
+    expect(r1.intent).toBe(IntentName.Greeting);
+    expect(r1.response).toContain('Welcome');
+    expect(r1.response).toContain('Arjun Sharma');
+
+    const r2 = await service.processMessage('Logout', { phone });
+    expect(r2.intent).toBe(IntentName.Logout);
+    expect(authService.deactivateWhatsAppSessionByPhone).toHaveBeenCalledWith(phone);
+    expect(clearSession).toHaveBeenCalledWith(phone);
+
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const r3 = await service.processMessage('Hello', { phone });
+    expect(r3.intent).toBe(IntentName.Greeting);
+    expect(r3.response).toContain('Authentication Required');
+    expect(r3.response).not.toContain('Arjun Sharma');
+    expect(r3.response).not.toContain('Welcome back');
+    expect(r3.response).not.toContain('Arjun');
+  });
+
+  it('after logout → Attendance → login-required, no attendance data', async () => {
+    const phone = '919999999999';
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Test User', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+    await service.processMessage('Logout', { phone });
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const result = await service.processMessage('Attendance', { phone });
+    expect(result.intent).toBe(IntentName.Attendance);
+    expect(result.response).toContain('Authentication Required');
+    expect(integration.attendance.getByStudentId).not.toHaveBeenCalled();
+  });
+
+  it('after logout → Fees → login-required, no fees data', async () => {
+    const phone = '919999999999';
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Test User', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+    await service.processMessage('Logout', { phone });
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const result = await service.processMessage('Fee details', { phone });
+    expect(result.intent).toBe(IntentName.Fees);
+    expect(result.response).toContain('Authentication Required');
+    expect(integration.fees.getByStudentId).not.toHaveBeenCalled();
+  });
+
+  it('after logout → Results → login-required, no results data', async () => {
+    const phone = '919999999999';
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Test User', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+    await service.processMessage('Logout', { phone });
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const result = await service.processMessage('Exam results', { phone });
+    expect(result.intent).toBe(IntentName.Results);
+    expect(result.response).toContain('Authentication Required');
+    expect(integration.results.getByStudentId).not.toHaveBeenCalled();
+  });
+
+  it('after logout → Profile → login-required, no profile data', async () => {
+    const phone = '919999999999';
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Test User', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+    await service.processMessage('Logout', { phone });
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const result = await service.processMessage('My profile', { phone });
+    expect(result.intent).toBe(IntentName.Profile);
+    expect(result.response).toContain('Authentication Required');
+  });
+
+  it('after logout → stale button click → login-required, no data', async () => {
+    const phone = '919999999999';
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Test User', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+    await service.processMessage('Logout', { phone });
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const result = await service.processMessage('intent:attendance', { phone });
+    expect(result.intent).toBe(IntentName.Attendance);
+    expect(result.response).toContain('Authentication Required');
+    expect(integration.attendance.getByStudentId).not.toHaveBeenCalled();
+  });
+
+  it('login URL contains token, not phone number', async () => {
+    const phone = '919999999999';
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const result = await service.processMessage('Attendance', { phone });
+    expect(result.response).toContain('token=securetoken123');
+    expect(result.response).not.toContain('?phone=');
+    expect(result.response).not.toContain('919999999999');
+  });
+
+  it('greeting for unauthenticated user does not mark greetingSent', async () => {
+    const phone = '919999999999';
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    await service.processMessage('Hello', { phone });
+
+    expect(authService.generateLoginToken).toHaveBeenCalled();
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Test User', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+    const r2 = await service.processMessage('Hello', { phone });
+    expect(r2.response).toContain('Welcome');
   });
 });

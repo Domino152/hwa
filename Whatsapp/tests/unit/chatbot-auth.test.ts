@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { generateResponse, IntentName, PRIVATE_INTENTS } from '../../src/chatbot/index.js';
 import type { ChatbotContext } from '../../src/chatbot/intents.js';
 
+vi.mock('../../src/modules/auth/index.js', () => ({
+  authService: {
+    generateLoginToken: vi.fn().mockResolvedValue({ tokenId: 'tok-1', rawToken: 'authtok123' }),
+    deactivateWhatsAppSessionByPhone: vi.fn().mockResolvedValue(undefined),
+    redeemLoginToken: vi.fn(),
+    login: vi.fn(),
+    linkWhatsApp: vi.fn(),
+    unlinkWhatsApp: vi.fn(),
+  },
+}));
+
 vi.mock('../../src/integration/index.js', () => ({
   integration: {
     findUserByPhone: vi.fn().mockResolvedValue(null),

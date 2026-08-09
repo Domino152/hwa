@@ -25,5 +25,7 @@ router.post(
 
 router.get('/status', authenticate, asyncHandler(authController.getStatus));
 
+router.get('/redeem-token', asyncHandler(authController.redeemToken));
+
 export { authService };
 export default router;

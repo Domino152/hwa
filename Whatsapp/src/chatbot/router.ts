@@ -1,7 +1,7 @@
 import type { ChatbotContext } from './intents.js';
 import { IntentName, PRIVATE_INTENTS } from './intents.js';
 import { classifyIntentNLP, type ClassificationResult } from './intentClassifier.js';
-import { generateResponse } from './responseGenerator.js';
+import { generateResponse, getLoginUrl } from './responseGenerator.js';
 import {
   GeminiOrchestrator,
   type GeminiClassification,
@@ -158,7 +158,7 @@ export class MessageRouter {
     const isPrivate = PRIVATE_INTENTS.includes(intentName);
 
     if (isPrivate && !context.isAuthenticated) {
-      const response = loginRequiredCard(`${config.PUBLIC_APP_URL}/login?phone=${context.phone}`);
+      const response = loginRequiredCard(await getLoginUrl(context.phone));
 
       routerLogger.info(
         { phone: context.phone, action: intentName, reason: 'unauthenticated' },
@@ -304,7 +304,7 @@ export class MessageRouter {
     }
 
     if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
-      const response = loginRequiredCard(`${config.PUBLIC_APP_URL}/login?phone=${context.phone}`);
+      const response = loginRequiredCard(await getLoginUrl(context.phone));
       this.recordAIExchange(context, text, intent, response);
       return {
         intent,
@@ -429,7 +429,7 @@ export class MessageRouter {
     }
 
     if (PRIVATE_INTENTS.includes(intent) && !context.user?.studentId) {
-      return loginRequiredCard(`${config.PUBLIC_APP_URL}/login?phone=${context.phone}`);
+      return loginRequiredCard(await getLoginUrl(context.phone));
     }
 
     const args = this.buildToolArgs(intent, context, classification);

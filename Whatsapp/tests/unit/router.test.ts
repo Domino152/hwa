@@ -2,6 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MessageRouter } from '../../src/chatbot/router.js';
 import { IntentName } from '../../src/chatbot/intents.js';
 import { integration } from '../../src/integration/index.js';
+import { authService } from '../../src/modules/auth/index.js';
+
+vi.mock('../../src/modules/auth/index.js', () => ({
+  authService: {
+    generateLoginToken: vi.fn().mockResolvedValue({ tokenId: 'tok-1', rawToken: 'tok123secure' }),
+    deactivateWhatsAppSessionByPhone: vi.fn().mockResolvedValue(undefined),
+    redeemLoginToken: vi.fn(),
+    login: vi.fn(),
+    linkWhatsApp: vi.fn(),
+    unlinkWhatsApp: vi.fn(),
+  },
+}));
 
 vi.mock('../../src/integration/index.js', () => ({
   integration: {
@@ -299,10 +311,11 @@ describe('MessageRouter', () => {
       expect(result.response).toContain('Authentication Required');
     });
 
-    it('login URL uses PUBLIC_APP_URL', async () => {
+    it('login URL contains token, not phone number', async () => {
       vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
       const result = await router.route('intent:attendance', { phone: 'unauth-3' });
-      expect(result.response).toContain('http://localhost:5173/login?phone=unauth-3');
+      expect(result.response).toContain('token=');
+      expect(result.response).not.toContain('?phone=');
     });
 
     it('does not reveal student name for unauthenticated user', async () => {
@@ -320,6 +333,34 @@ describe('MessageRouter', () => {
         const result = await router.route(action, { phone: 'unauth-5' });
         expect(result.response).toContain('Authentication Required');
       }
+    });
+
+    it('does not invoke Gemini for unauthenticated natural-language queries', async () => {
+      const { GeminiOrchestrator } = await import('../../src/chatbot/ai/gemini-orchestrator.js');
+      const mockProcess = vi.fn();
+      vi.mocked(GeminiOrchestrator).mockImplementation(() => ({ processMessage: mockProcess }) as never);
+
+      const router2 = new MessageRouter();
+      vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+      const result = await router2.route('What is my CGPA?', { phone: 'unauth-6' });
+
+      expect(result.response).toContain('Authentication Required');
+      expect(mockProcess).not.toHaveBeenCalled();
+    });
+
+    it('stale button click after logout returns login-required', async () => {
+      const phone = '919999999999';
+
+      vi.mocked(integration.findUserByPhone).mockResolvedValue({
+        id: 'u1', fullName: 'Test', role: 'student', studentId: '22CSE001',
+        department: 'CSE', year: 4, section: 'A',
+      });
+      const r1 = await router.route('intent:attendance', { phone });
+      expect(r1.response).toContain('Attendance');
+
+      vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+      const r2 = await router.route('intent:attendance', { phone });
+      expect(r2.response).toContain('Authentication Required');
     });
   });
 });

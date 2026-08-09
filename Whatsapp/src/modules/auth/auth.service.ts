@@ -1,4 +1,5 @@
 import { User } from '../../database/models/User.js';
+import { LoginToken } from '../../database/models/LoginToken.js';
 import { comparePassword } from './password.service.js';
 import { signToken, type TokenPayload } from './token.service.js';
 import { toSafeUser, type LoginRequest, type LoginResponse, type LinkWhatsAppResponse, type UserStatusResponse, type MeResponse } from './auth.types.js';
@@ -153,5 +154,33 @@ export class AuthService {
    */
   async findByPhone(phone: string) {
     return User.findByPhone(phone);
+  }
+
+  /**
+   * Generate a single-use, short-lived login token bound to a phone number.
+   * Returns the raw token (never stored in plaintext).
+   * Used to produce secure WhatsApp login URLs.
+   */
+  async generateLoginToken(phone: string): Promise<{ tokenId: string; rawToken: string }> {
+    const { tokenId, rawToken } = await LoginToken.createForPhone(phone);
+    authLogger.info({ tokenId, phone }, 'Login token generated for WhatsApp');
+    return { tokenId, rawToken };
+  }
+
+  /**
+   * Redeem a single-use login token.
+   * Returns the bound phone number if valid, null otherwise.
+   * Marks the token as used to prevent replay.
+   */
+  async redeemLoginToken(rawToken: string): Promise<{ phone: string } | null> {
+    const tokenDoc = await LoginToken.findValid(rawToken);
+    if (!tokenDoc) {
+      authLogger.warn('Login token redemption failed (invalid, expired, or already used)');
+      return null;
+    }
+
+    await LoginToken.markUsed(String(tokenDoc._id));
+    authLogger.info({ tokenId: String(tokenDoc._id), phone: tokenDoc.phone }, 'Login token redeemed');
+    return { phone: tokenDoc.phone };
   }
 }

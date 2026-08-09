@@ -3,6 +3,18 @@ import { IntentName } from '../../src/chatbot/intents.js';
 import { MessageRouter } from '../../src/chatbot/router.js';
 import { GeminiOrchestrator } from '../../src/chatbot/ai/gemini-orchestrator.js';
 import { integration } from '../../src/integration/index.js';
+import { authService } from '../../src/modules/auth/index.js';
+
+vi.mock('../../src/modules/auth/index.js', () => ({
+  authService: {
+    generateLoginToken: vi.fn().mockResolvedValue({ tokenId: 'tok-1', rawToken: 'gemtoken123' }),
+    deactivateWhatsAppSessionByPhone: vi.fn().mockResolvedValue(undefined),
+    redeemLoginToken: vi.fn(),
+    login: vi.fn(),
+    linkWhatsApp: vi.fn(),
+    unlinkWhatsApp: vi.fn(),
+  },
+}));
 
 vi.mock('../../src/integration/index.js', () => ({
   integration: {

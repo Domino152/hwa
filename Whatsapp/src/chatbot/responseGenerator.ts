@@ -1,7 +1,7 @@
 import { IntentName, PRIVATE_INTENTS, type ChatbotContext, type AuthenticatedUserInfo } from './intents.js';
 import { config } from '../config/index.js';
 import { integration } from '../integration/index.js';
-import { User } from '../database/models/User.js';
+import { authService } from '../modules/auth/index.js';
 import type { KnowledgeCategory } from '../database/models/KnowledgeBase.js';
 import { parseNaturalDate, type ParsedDate } from './dateParser.js';
 import {
@@ -23,6 +23,7 @@ import {
 import {
   getSession,
   markGreetingSent,
+  clearSession,
   type ChatSession,
 } from './sessionManager.js';
 import type { ClassificationResult } from './intentClassifier.js';
@@ -31,6 +32,11 @@ export interface GenerateOptions {
   classification: ClassificationResult;
   context: ChatbotContext;
   session: ChatSession;
+}
+
+export async function getLoginUrl(phone: string): Promise<string> {
+  const { rawToken } = await authService.generateLoginToken(phone);
+  return `${config.PUBLIC_APP_URL}/login?token=${rawToken}`;
 }
 
 /**
@@ -45,7 +51,7 @@ export async function generateResponse(
   const session = getSession(context.phone);
 
   if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
-    return loginRequiredCard(`${config.PUBLIC_APP_URL}/login?phone=${context.phone}`);
+    return loginRequiredCard(await getLoginUrl(context.phone));
   }
 
   switch (intent) {
@@ -91,20 +97,18 @@ export async function generateResponse(
   }
 }
 
-function handleGreeting(session: ChatSession, user?: AuthenticatedUserInfo): string {
-  const isFirstTime = !session.greetingSent;
-  markGreetingSent(session.phone);
-
+async function handleGreeting(session: ChatSession, user?: AuthenticatedUserInfo): Promise<string> {
   if (user) {
+    const isFirstTime = !session.greetingSent;
+    markGreetingSent(session.phone);
     return greetingCard(user.fullName, isFirstTime);
   }
 
-  // Unauthenticated: return login-required greeting (NO personalized data)
-  return loginRequiredCard(`${config.PUBLIC_APP_URL}/login?phone=${session.phone}`);
+  return loginRequiredCard(await getLoginUrl(session.phone));
 }
 
-function handleLogin(phone: string): string {
-  const url = `${config.PUBLIC_APP_URL}/login?phone=${phone}`;
+async function handleLogin(phone: string): Promise<string> {
+  const url = await getLoginUrl(phone);
   return [
     '🔐 *Login Required*',
     '',
@@ -117,9 +121,8 @@ function handleLogin(phone: string): string {
 }
 
 async function handleLogout(isAuthenticated: boolean, phone: string): Promise<string> {
-  const loginUrl = `${config.PUBLIC_APP_URL}/login?phone=${phone}`;
-
   if (!isAuthenticated) {
+    const loginUrl = await getLoginUrl(phone);
     return [
       'ℹ️ *Already Logged Out*',
       '',
@@ -129,12 +132,10 @@ async function handleLogout(isAuthenticated: boolean, phone: string): Promise<st
     ].join('\n');
   }
 
-  // CRITICAL: Actually invalidate the WhatsApp session in the database
-  const user = await User.findOne({ whatsappNumber: phone });
-  if (user) {
-    await User.findByIdAndUpdate(user._id, { whatsappSessionActive: false });
-  }
+  await authService.deactivateWhatsAppSessionByPhone(phone);
+  clearSession(phone);
 
+  const loginUrl = await getLoginUrl(phone);
   return logoutCard(loginUrl);
 }
 

@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import type { AuthenticatedRequest } from './auth.middleware.js';
 import { AuthService } from './auth.service.js';
 import { sendSuccess } from '../../shared/utils/response.js';
@@ -34,5 +34,19 @@ export class AuthController {
     if (!req.user) return;
     const status = await this.authService.getStatus(req.user.userId);
     sendSuccess(res, status);
+  };
+
+  redeemToken = async (req: Request, res: Response): Promise<void> => {
+    const { token } = req.query as { token?: string };
+    if (!token) {
+      sendSuccess(res, { error: 'Token is required' }, 400);
+      return;
+    }
+    const result = await this.authService.redeemLoginToken(token);
+    if (!result) {
+      sendSuccess(res, { error: 'Invalid or expired token' }, 401);
+      return;
+    }
+    sendSuccess(res, { phone: result.phone, redirectTo: '/login/success' });
   };
 }

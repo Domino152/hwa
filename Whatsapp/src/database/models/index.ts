@@ -92,3 +92,6 @@ export type {
   NotificationPriority,
   NotificationReferenceType,
 } from './Notification.js';
+
+export { LoginToken } from './LoginToken.js';
+export type { ILoginToken, ILoginTokenModel } from './LoginToken.js';

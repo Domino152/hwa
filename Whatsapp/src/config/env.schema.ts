@@ -17,6 +17,40 @@ function isWeakJwtSecret(value: string): boolean {
   return WEAK_JWT_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
+const PRIVATE_HOSTNAMES = new Set([
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '::1',
+  '[::1]',
+]);
+
+function isPrivateOrInsecureUrl(value: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return true;
+  }
+
+  if (parsed.protocol !== 'https:') return true;
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  if (PRIVATE_HOSTNAMES.has(hostname)) return true;
+
+  const ipMatch = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipMatch) {
+    const [, a, b] = ipMatch.map(Number);
+    if (a === 10) return true;
+    if (a === 172 && b !== undefined && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+  }
+
+  return false;
+}
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -33,7 +67,6 @@ const envSchema = z
       .string()
       .min(32, 'JWT_SECRET must be at least 32 characters'),
     JWT_EXPIRES_IN: z.string().default('7d'),
-    LOGIN_PORTAL_URL: z.string().default('http://localhost:5173/login'),
     PUBLIC_APP_URL: z.string().default('http://localhost:5173'),
     BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(20).default(10),
     GEMINI_API_KEY: z.string().optional(),
@@ -58,18 +91,10 @@ const envSchema = z
         });
       }
 
-      if (!process.env.LOGIN_PORTAL_URL) {
+      if (!process.env.PUBLIC_APP_URL || isPrivateOrInsecureUrl(data.PUBLIC_APP_URL)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'LOGIN_PORTAL_URL is required in production',
-          path: ['LOGIN_PORTAL_URL'],
-        });
-      }
-
-      if (!process.env.PUBLIC_APP_URL || data.PUBLIC_APP_URL.includes('localhost')) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'PUBLIC_APP_URL must be a public HTTPS URL in production (no localhost)',
+          message: 'PUBLIC_APP_URL must be a public HTTPS URL in production (no localhost, private IPs, or non-HTTPS)',
           path: ['PUBLIC_APP_URL'],
         });
       }
