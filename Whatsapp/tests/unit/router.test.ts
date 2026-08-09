@@ -23,8 +23,10 @@ vi.mock('../../src/integration/index.js', () => ({
 vi.mock('../../src/chatbot/ai/gemini-orchestrator.js', () => ({
   GeminiOrchestrator: vi.fn().mockImplementation(() => ({
     processMessage: vi.fn().mockResolvedValue({
-      text: 'AI generated response',
-      toolCallsMade: [{ name: 'get_attendance', args: { studentId: '22CSE001' } }],
+      intent: 'attendance',
+      entities: { studentId: '22CSE001' },
+      requiresDatabase: true,
+      confidence: 0.9,
       tokenCount: 100,
     }),
   })),

@@ -1,9 +1,12 @@
-import type { ChatbotContext, IntentName } from './intents.js';
-import { PRIVATE_INTENTS } from './intents.js';
+import type { ChatbotContext } from './intents.js';
+import { IntentName, PRIVATE_INTENTS } from './intents.js';
 import { classifyIntentNLP, type ClassificationResult } from './intentClassifier.js';
 import { generateResponse } from './responseGenerator.js';
-import { GeminiOrchestrator, type OrchestratorResult } from './ai/gemini-orchestrator.js';
-import { ToolExecutor } from './tools/tool-executor.js';
+import {
+  GeminiOrchestrator,
+  type GeminiClassification,
+} from './ai/gemini-orchestrator.js';
+import { ToolExecutor, type ToolName } from './tools/tool-executor.js';
 import { integration } from '../integration/index.js';
 import {
   addHistoryEntry,
@@ -12,11 +15,34 @@ import {
 } from './sessionManager.js';
 import { getSuggestedActions } from './interactive.js';
 import { config } from '../config/index.js';
+import {
+  attendanceCard,
+  feesCard,
+  scheduleCard,
+  resultsCard,
+  profileCard,
+  announcementsCard,
+  sectionHeader,
+  card,
+  bulletItem,
+  loginRequiredCard,
+  unknownIntentCard,
+} from './formatter.js';
 import { createChildLogger } from '../shared/utils/logger.js';
 
 const routerLogger = createChildLogger({ module: 'message-router' });
 
 const NLP_CONFIDENCE_THRESHOLD = 0.35;
+const AI_CONFIDENCE_THRESHOLD = 0.4;
+
+const INTENT_TO_TOOL: Partial<Record<IntentName, ToolName>> = {
+  [IntentName.Attendance]: 'get_attendance',
+  [IntentName.Fees]: 'get_fees',
+  [IntentName.Schedule]: 'get_schedule',
+  [IntentName.Results]: 'get_results',
+  [IntentName.Profile]: 'get_profile',
+  [IntentName.Announcements]: 'get_announcements',
+};
 
 export interface RouteResult {
   intent: IntentName;
@@ -43,7 +69,7 @@ export class MessageRouter {
       return null;
     }
 
-    this.geminiOrchestrator = new GeminiOrchestrator(apiKey, this.toolExecutor);
+    this.geminiOrchestrator = new GeminiOrchestrator(apiKey, config.GEMINI_MODEL);
     return this.geminiOrchestrator;
   }
 
@@ -103,7 +129,6 @@ export class MessageRouter {
     const isPrivate = PRIVATE_INTENTS.includes(intentName);
 
     if (isPrivate && !context.isAuthenticated) {
-      const { loginRequiredCard } = await import('./formatter.js');
       const response = loginRequiredCard(`${config.LOGIN_PORTAL_URL}?phone=${context.phone}`);
 
       return {
@@ -116,7 +141,7 @@ export class MessageRouter {
     }
 
     try {
-      const response = await generateResponse(intentName, context);
+      const response = await this.executeIntent(intentName, context);
 
       updateSessionIntent(context.phone, intentName);
       addHistoryEntry(context.phone, { role: 'user', text, intent: intentName, timestamp: Date.now() });
@@ -148,7 +173,7 @@ export class MessageRouter {
     routerLogger.debug({ intent, confidence: classification.confidence }, 'Routing known intent via NLP');
 
     try {
-      const response = await generateResponse(intent, context, classification);
+      const response = await this.executeIntent(intent, context, classification);
 
       updateSessionIntent(context.phone, intent);
       addHistoryEntry(context.phone, { role: 'user', text: context.originalText, intent, timestamp: Date.now() });
@@ -181,96 +206,376 @@ export class MessageRouter {
     const orchestrator = this.getGeminiOrchestrator();
 
     if (!orchestrator) {
-      routerLogger.warn('Gemini not available, falling back to unknown intent');
-      const { unknownIntentCard } = await import('./formatter.js');
+      return this.fallbackAI(text, context, start, 'no_api_key');
+    }
+
+    routerLogger.debug({ phone: context.phone }, 'Escalating to Gemini classifier');
+
+    const history = getConversationHistory(context.phone, 10);
+    const geminiHistory = history.map((h) => ({
+      role: h.role === 'user' ? ('user' as const) : ('model' as const),
+      content: h.text,
+    }));
+
+    let classification: GeminiClassification;
+    try {
+      classification = await orchestrator.processMessage(text, geminiHistory, {
+        userName: context.user?.fullName,
+        role: context.user?.role,
+      });
+    } catch (error) {
+      routerLogger.error({ error, phone: context.phone }, 'AI classification failed');
+      return this.fallbackAI(text, context, start, 'api_error');
+    }
+
+    const intent = classification.intent;
+
+    // Identity-safety: backend ignores model-provided identity fields.
+    // Sanitization happens in the orchestrator (entities) and the router
+    // never reads identity from classification — only from context.user.
+
+    if (intent === IntentName.Unknown) {
+      return this.fallbackAI(text, context, start, 'unknown_intent', classification);
+    }
+
+    if (classification.confidence < AI_CONFIDENCE_THRESHOLD) {
+      routerLogger.debug(
+        { intent, confidence: classification.confidence },
+        'AI confidence below threshold; falling back to unknown',
+      );
+      return this.fallbackAI(text, context, start, 'low_confidence', classification);
+    }
+
+    if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
+      const response = loginRequiredCard(`${config.LOGIN_PORTAL_URL}?phone=${context.phone}`);
+      this.recordAIExchange(context, text, intent, response);
       return {
-        intent: 'unknown' as IntentName,
-        response: unknownIntentCard(),
+        intent,
+        response,
         originalText: text,
-        suggestedActions: getSuggestedActions('unknown', context.isAuthenticated),
+        suggestedActions: getSuggestedActions(intent, false),
         routedVia: 'ai',
       };
     }
 
-    routerLogger.debug({ phone: context.phone }, 'Escalating to Gemini AI');
-
-    const history = getConversationHistory(context.phone, 10);
-    const chatHistory = history.map((h) => ({
-      role: h.role === 'user' ? ('user' as const) : ('model' as const),
-      text: h.text,
-    }));
-
-    const geminiHistory = chatHistory.map((h) => ({
-      role: h.role,
-      content: h.text,
-    }));
-
     try {
-      const result: OrchestratorResult = await orchestrator.processMessage(text, geminiHistory, {
-        userName: context.user?.fullName,
-        role: context.user?.role,
-        studentId: context.user?.studentId,
-      });
-
-      const intent = this.classifyAIIntent(result);
-
-      addHistoryEntry(context.phone, { role: 'user', text, intent, timestamp: Date.now() });
-      addHistoryEntry(context.phone, { role: 'bot', text: result.text.substring(0, 200), intent, timestamp: Date.now() });
+      const response = await this.executeIntent(intent, context, classification);
+      this.recordAIExchange(context, text, intent, response);
 
       const latencyMs = Date.now() - start;
       routerLogger.info(
         {
           phone: context.phone,
           intent,
+          confidence: classification.confidence,
           routedVia: 'ai',
-          toolCalls: result.toolCallsMade.length,
-          tokenCount: result.tokenCount,
+          tokenCount: classification.tokenCount,
           latencyMs,
         },
-        'AI escalation complete',
+        'AI classification routed',
       );
 
       return {
         intent,
-        response: result.text,
+        response,
         originalText: text,
         suggestedActions: getSuggestedActions(intent, context.isAuthenticated),
         routedVia: 'ai',
       };
     } catch (error) {
-      routerLogger.error({ error, phone: context.phone }, 'AI escalation failed');
-
-      const { unknownIntentCard } = await import('./formatter.js');
-      return {
-        intent: 'unknown' as IntentName,
-        response: unknownIntentCard(),
-        originalText: text,
-        suggestedActions: getSuggestedActions('unknown', context.isAuthenticated),
-        routedVia: 'ai',
-      };
+      routerLogger.error({ error, phone: context.phone, intent }, 'AI-routed intent execution failed');
+      return this.fallbackAI(text, context, start, 'execution_error', classification);
     }
   }
 
-  private classifyAIIntent(result: OrchestratorResult): IntentName {
-    const toolNames = result.toolCallsMade.map((tc) => tc.name);
+  private fallbackAI(
+    text: string,
+    context: ChatbotContext,
+    start: number,
+    reason: string,
+    classification?: GeminiClassification,
+  ): RouteResult {
+    const response = unknownIntentCard();
+    const intent = IntentName.Unknown;
+    this.recordAIExchange(context, text, intent, response);
 
-    if (toolNames.includes('get_attendance')) return 'attendance' as IntentName;
-    if (toolNames.includes('get_fees')) return 'fees' as IntentName;
-    if (toolNames.includes('get_schedule')) return 'schedule' as IntentName;
-    if (toolNames.includes('get_results')) return 'results' as IntentName;
-    if (toolNames.includes('get_profile')) return 'profile' as IntentName;
-    if (toolNames.includes('get_public_information') || toolNames.includes('search_public_information')) {
-      return 'public_information' as IntentName;
+    routerLogger.info(
+      {
+        phone: context.phone,
+        reason,
+        confidence: classification?.confidence,
+        routedVia: 'ai',
+        latencyMs: Date.now() - start,
+      },
+      'AI escalation fell back to unknown',
+    );
+
+    return {
+      intent,
+      response,
+      originalText: text,
+      suggestedActions: getSuggestedActions(intent, context.isAuthenticated),
+      routedVia: 'ai',
+    };
+  }
+
+  private recordAIExchange(
+    context: ChatbotContext,
+    text: string,
+    intent: IntentName,
+    response: string,
+  ): void {
+    updateSessionIntent(context.phone, intent);
+    addHistoryEntry(context.phone, {
+      role: 'user',
+      text,
+      intent,
+      timestamp: Date.now(),
+    });
+    addHistoryEntry(context.phone, {
+      role: 'bot',
+      text: response.substring(0, 200),
+      intent,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Execute an intent end-to-end on the backend.
+   *
+   * Uses the existing ToolExecutor as the backend executor for intents
+   * that map to a data tool. For intents without a tool (e.g., syllabus,
+   * login, help) it falls back to the deterministic response generator.
+   *
+   * Identity is ALWAYS read from the authenticated session, never from
+   * classification entities.
+   */
+  private async executeIntent(
+    intent: IntentName,
+    context: ChatbotContext,
+    classification?: GeminiClassification | ClassificationResult,
+  ): Promise<string> {
+    const toolName = INTENT_TO_TOOL[intent];
+
+    if (!toolName) {
+      // Fall back to the deterministic formatter for tool-less intents.
+      return this.executeViaResponseGenerator(intent, context, classification);
     }
-    if (toolNames.includes('get_announcements')) return 'announcements' as IntentName;
 
-    const text = result.text.toLowerCase();
-    if (text.includes('attendance')) return 'attendance' as IntentName;
-    if (text.includes('fee') || text.includes('payment')) return 'fees' as IntentName;
-    if (text.includes('schedule') || text.includes('timetable') || text.includes('class')) return 'schedule' as IntentName;
-    if (text.includes('result') || text.includes('grade') || text.includes('cgpa')) return 'results' as IntentName;
-    if (text.includes('profile')) return 'profile' as IntentName;
+    if (PRIVATE_INTENTS.includes(intent) && !context.user?.studentId) {
+      return loginRequiredCard(`${config.LOGIN_PORTAL_URL}?phone=${context.phone}`);
+    }
 
-    return 'public_information' as IntentName;
+    const args = this.buildToolArgs(intent, context, classification);
+    const result = await this.toolExecutor.execute(toolName, args);
+
+    if (!result.success) {
+      routerLogger.warn({ intent, error: result.error }, 'Tool execution returned error');
+      return card('⚠️ Error', ['We could not fetch your data right now. Please try again later.']);
+    }
+
+    const formatted = this.formatToolResult(intent, result.data);
+    if (!formatted) {
+      return this.executeViaResponseGenerator(intent, context, classification);
+    }
+    return formatted;
+  }
+
+  private async executeViaResponseGenerator(
+    intent: IntentName,
+    context: ChatbotContext,
+    classification?: GeminiClassification | ClassificationResult,
+  ): Promise<string> {
+    if (classification && 'entities' in classification) {
+      return generateResponse(intent, context, this.toNLPClassification(classification));
+    }
+    return generateResponse(intent, context);
+  }
+
+  private buildToolArgs(
+    intent: IntentName,
+    context: ChatbotContext,
+    classification?: GeminiClassification | ClassificationResult,
+  ): Record<string, unknown> {
+    const args: Record<string, unknown> = {};
+
+    if (intent === IntentName.PublicInformation) {
+      const entities = this.getEntities(classification);
+      args.category = entities.category ?? 'about_hits';
+      if (entities.query) args.query = entities.query;
+      return args;
+    }
+
+    if (intent === IntentName.Announcements) {
+      const entities = this.getEntities(classification);
+      if (entities.category) args.category = entities.category;
+      return args;
+    }
+
+    // Private intents: identity is always from the authenticated session.
+    if (context.user?.studentId) {
+      args.studentId = context.user.studentId;
+    }
+
+    const entities = this.getEntities(classification);
+    if (entities.subject) args.subject = entities.subject;
+    if (entities.dateExpression) args.dateExpression = entities.dateExpression;
+
+    return args;
+  }
+
+  private getEntities(
+    classification?: GeminiClassification | ClassificationResult,
+  ): Record<string, string> {
+    if (!classification) return {};
+    if ('entities' in classification && classification.entities) {
+      return { ...classification.entities };
+    }
+    const out: Record<string, string> = {};
+    const c = classification as ClassificationResult;
+    if (c.dateExpression) out.dateExpression = c.dateExpression;
+    if (c.extractedSubject) out.subject = c.extractedSubject;
+    return out;
+  }
+
+  private toNLPClassification(classification: GeminiClassification): ClassificationResult {
+    return {
+      intent: classification.intent,
+      confidence: classification.confidence,
+      dateExpression: classification.entities.dateExpression ?? null,
+      extractedSubject: classification.entities.subject ?? null,
+    };
+  }
+
+  private formatToolResult(
+    intent: IntentName,
+    data: unknown,
+  ): string | null {
+    if (!data || typeof data !== 'object') return null;
+    const d = data as Record<string, unknown>;
+
+    switch (intent) {
+      case IntentName.Attendance:
+        return this.formatAttendance(d);
+      case IntentName.Fees:
+        return this.formatFees(d);
+      case IntentName.Schedule:
+        return this.formatSchedule(d);
+      case IntentName.Results:
+        return this.formatResults(d);
+      case IntentName.Profile:
+        return this.formatProfile(d);
+      case IntentName.Announcements:
+        return this.formatAnnouncements(d);
+      case IntentName.PublicInformation:
+        return this.formatPublicInformation(d);
+      default:
+        return null;
+    }
+  }
+
+  private formatAttendance(d: Record<string, unknown>): string | null {
+    if (d.hasData === false) {
+      return card('📊 Attendance', ['No attendance records found.', '', 'Please contact your administrator.']);
+    }
+    const overall = typeof d.overallPercentage === 'number' ? d.overallPercentage : 0;
+    const subjects = Array.isArray(d.subjects) ? (d.subjects as Array<{
+      subject: string;
+      percentage: number;
+      attendedClasses: number;
+      totalClasses: number;
+    }>) : [];
+    return attendanceCard(overall, subjects);
+  }
+
+  private formatFees(d: Record<string, unknown>): string | null {
+    if (d.hasData === false) {
+      return card('💰 Fees', ['No fee records found.', '', 'Please contact your administrator.']);
+    }
+    const dueDate = typeof d.dueDate === 'string' ? new Date(d.dueDate) : new Date();
+    return feesCard({
+      totalFee: Number(d.totalFee ?? 0),
+      paidAmount: Number(d.paidAmount ?? 0),
+      remainingAmount: Number(d.remainingAmount ?? 0),
+      dueDate,
+      status: String(d.status ?? 'pending'),
+    });
+  }
+
+  private formatSchedule(d: Record<string, unknown>): string | null {
+    if (d.hasData === false) {
+      return card('📅 Schedule', ['No schedule found for the requested day.']);
+    }
+    const entries = Array.isArray(d.entries) ? (d.entries as Array<{
+      timeSlot: string;
+      subject: string;
+      room: string;
+      type: string;
+    }>) : [];
+    const dayLabel = String(d.dateLabel ?? 'Today');
+    const dayOfWeek = String(d.dayOfWeek ?? '');
+    return scheduleCard(dayOfWeek ? `${dayLabel} (${dayOfWeek})` : dayLabel, entries);
+  }
+
+  private formatResults(d: Record<string, unknown>): string | null {
+    if (d.hasData === false) {
+      return card('📝 Results', ['No results found.', '', 'Please contact your administrator.']);
+    }
+    const results = Array.isArray(d.subjects) ? (d.subjects as Array<{
+      subject: string;
+      grade: string;
+      marksObtained: number;
+      totalMarks: number;
+    }>) : [];
+    const cgpa = typeof d.cgpa === 'number' ? d.cgpa : 0;
+    return resultsCard(results, cgpa);
+  }
+
+  private formatProfile(d: Record<string, unknown>): string | null {
+    if (d.hasData === false) {
+      return card('👤 Profile', ['Profile not found.', '', 'Please contact your administrator.']);
+    }
+    const student = (d.student ?? {}) as Record<string, unknown>;
+    return profileCard({
+      fullName: String(student.fullName ?? 'Unknown'),
+      studentId: String(student.studentId ?? 'Unknown'),
+      department: String(student.department ?? 'Unknown'),
+      year: Number(student.year ?? 0),
+      section: String(student.section ?? 'Unknown'),
+    });
+  }
+
+  private formatAnnouncements(d: Record<string, unknown>): string | null {
+    const entries = Array.isArray(d.entries) ? (d.entries as Array<{
+      title: string;
+      content: string;
+      updatedAt?: string;
+    }>) : [];
+    return announcementsCard(
+      entries.map((e) => ({
+        title: e.title,
+        content: e.content,
+        priority: 'normal' as const,
+        publishedAt: e.updatedAt ? new Date(e.updatedAt) : new Date(),
+      })),
+    );
+  }
+
+  private formatPublicInformation(d: Record<string, unknown>): string | null {
+    if (d.hasData === false) {
+      return card('🔍 Search', ['No information found for your query.']);
+    }
+    const category = String(d.category ?? 'Information').replace(/_/g, ' ');
+    const entries = Array.isArray(d.entries) ? (d.entries as Array<{
+      title: string;
+      content: string;
+    }>) : [];
+    if (entries.length === 0) return null;
+    if (entries.length === 1) {
+      const e = entries[0]!;
+      return [sectionHeader(e.title, 'ℹ️'), '', e.content].join('\n');
+    }
+    const lines = entries.map((e) => `${bulletItem(`${e.title}: ${e.content.substring(0, 150)}`)}`);
+    return [sectionHeader(category, 'ℹ️'), '', ...lines].join('\n');
   }
 }

@@ -36,6 +36,7 @@ const envSchema = z
     LOGIN_PORTAL_URL: z.string().default('http://localhost:5173/login'),
     BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(20).default(10),
     GEMINI_API_KEY: z.string().optional(),
+    GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {

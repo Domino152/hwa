@@ -36,6 +36,6 @@ export {
 } from './formatter.js';
 
 export { MessageRouter, type RouteResult } from './router.js';
-export { GeminiOrchestrator, type OrchestratorResult } from './ai/gemini-orchestrator.js';
+export { GeminiOrchestrator, type OrchestratorResult, type GeminiClassification } from './ai/gemini-orchestrator.js';
 export { ToolExecutor, type ToolName, type ToolResult } from './tools/tool-executor.js';
 export { TOOL_DEFINITIONS, getToolDeclarations, getToolNames } from './tools/tool-definitions.js';
