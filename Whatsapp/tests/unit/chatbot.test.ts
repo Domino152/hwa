@@ -673,3 +673,67 @@ describe('Authentication Acceptance Test', () => {
     expect(r2.response).toContain('Welcome');
   });
 });
+
+describe('Token Redemption → Session Activation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(integration.attendance.getByStudentId).mockResolvedValue({ records: [], overallPercentage: 0, hasData: false });
+    vi.mocked(integration.fees.getByStudentId).mockResolvedValue({ fee: null, hasData: false });
+    vi.mocked(integration.schedule.getByStudent).mockResolvedValue({ entries: [], dayOfWeek: 'Monday', hasData: false });
+    vi.mocked(integration.results.getByStudentId).mockResolvedValue({ results: [], cgpa: 0, hasData: false });
+  });
+
+  it('redeeming a valid token activates the WhatsApp session', async () => {
+    const mockUser = { _id: 'u1', fullName: 'Arjun Sharma', whatsappNumber: '919999999999', whatsappSessionActive: false };
+    const mockUpdate = { _id: 'u1' };
+
+    vi.mocked(authService.redeemLoginToken).mockImplementation(async () => {
+      return { phone: '919999999999', userId: 'u1' };
+    });
+
+    const result = await authService.redeemLoginToken('valid-token-123');
+    expect(result).not.toBeNull();
+    expect(result!.phone).toBe('919999999999');
+    expect(result!.userId).toBe('u1');
+  });
+
+  it('redeeming an expired/invalid token returns null', async () => {
+    vi.mocked(authService.redeemLoginToken).mockResolvedValue(null);
+
+    const result = await authService.redeemLoginToken('bad-token');
+    expect(result).toBeNull();
+  });
+
+  it('full flow: login → logout → redeem token → message authenticated', async () => {
+    const phone = '919999999999';
+    const service = new ChatbotService();
+
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Arjun Sharma', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+
+    const r1 = await service.processMessage('Hello', { phone });
+    expect(r1.response).toContain('Arjun Sharma');
+
+    await service.processMessage('Logout', { phone });
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+    const r2 = await service.processMessage('Hello', { phone });
+    expect(r2.response).toContain('Authentication Required');
+
+    vi.mocked(authService.redeemLoginToken).mockResolvedValue({ phone, userId: 'u1' });
+    const tokenResult = await authService.redeemLoginToken('valid-token');
+    expect(tokenResult).not.toBeNull();
+    expect(tokenResult!.phone).toBe(phone);
+
+    vi.mocked(integration.findUserByPhone).mockResolvedValue({
+      id: 'u1', fullName: 'Arjun Sharma', role: 'student', studentId: '22CSE001',
+      department: 'CSE', year: 4, section: 'A',
+    });
+
+    const r3 = await service.processMessage('Hello', { phone });
+    expect(r3.response).toContain('Arjun Sharma');
+    expect(r3.response).not.toContain('Authentication Required');
+  });
+});

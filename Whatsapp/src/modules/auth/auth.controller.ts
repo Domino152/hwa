@@ -47,6 +47,10 @@ export class AuthController {
       sendSuccess(res, { error: 'Invalid or expired token' }, 401);
       return;
     }
-    sendSuccess(res, { phone: result.phone, redirectTo: '/login/success' });
+    sendSuccess(res, {
+      phone: result.phone,
+      userId: result.userId,
+      redirectTo: '/login/success',
+    });
   };
 }
