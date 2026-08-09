@@ -13,6 +13,7 @@ import {
   greetingCard,
   helpCard,
   loginRequiredCard,
+  logoutCard,
   unknownIntentCard,
   card,
   sectionHeader,
@@ -52,6 +53,9 @@ export async function generateResponse(
 
     case IntentName.Login:
       return handleLogin(context.phone);
+
+    case IntentName.Logout:
+      return handleLogout(context.isAuthenticated, context.phone);
 
     case IntentName.Attendance:
       return await handleAttendance(context.user!.studentId, classification);
@@ -108,6 +112,19 @@ function handleLogin(phone: string): string {
     '',
     '_After logging in, return here._',
   ].join('\n');
+}
+
+function handleLogout(isAuthenticated: boolean, phone: string): string {
+  if (!isAuthenticated) {
+    return [
+      'ℹ️ *Already Logged Out*',
+      '',
+      'You are not currently logged in.',
+      '',
+      `🔗 Login: ${config.LOGIN_PORTAL_URL}?phone=${phone}`,
+    ].join('\n');
+  }
+  return logoutCard(`${config.LOGIN_PORTAL_URL}?phone=${phone}`);
 }
 
 async function handleAttendance(

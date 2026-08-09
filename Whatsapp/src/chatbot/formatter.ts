@@ -125,6 +125,22 @@ export function loginRequiredCard(loginUrl: string): string {
   ].join('\n');
 }
 
+export function logoutCard(loginUrl?: string): string {
+  const lines = [
+    '👋 *You have been logged out*',
+    '',
+    'Your WhatsApp session has been disconnected.',
+    'Your personal data is no longer accessible here.',
+  ];
+
+  if (loginUrl) {
+    lines.push('', `🔗 Login again: ${loginUrl}`);
+  }
+
+  lines.push('', '_Type "login" to reconnect anytime._');
+  return lines.join('\n');
+}
+
 export function unknownIntentCard(): string {
   return [
     '🤔 *I didn\'t quite get that*',

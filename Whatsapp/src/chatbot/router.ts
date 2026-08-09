@@ -93,11 +93,21 @@ export class MessageRouter {
         : {}),
     };
 
+    routerLogger.debug(
+      { phone: context.phone, textLength: text.length, isAuthenticated: fullContext.isAuthenticated },
+      'MESSAGE_RECEIVED',
+    );
+
     if (this.isButtonClick(text)) {
+      routerLogger.debug({ phone: context.phone, type: 'button_click' }, 'routing → button path');
       return this.routeButtonClick(text, fullContext, start);
     }
 
     const classification = classifyIntentNLP(text);
+    routerLogger.debug(
+      { phone: context.phone, intent: classification.intent, confidence: classification.confidence },
+      'deterministic_intent',
+    );
 
     if (
       classification.confidence >= NLP_CONFIDENCE_THRESHOLD ||
@@ -110,6 +120,10 @@ export class MessageRouter {
       }
     }
 
+    routerLogger.debug(
+      { phone: context.phone, nlpIntent: classification.intent, nlpConfidence: classification.confidence },
+      'ai_fallback: true — escalating to Gemini',
+    );
     return this.routeToAI(text, fullContext, start);
   }
 
@@ -206,10 +220,18 @@ export class MessageRouter {
     const orchestrator = this.getGeminiOrchestrator();
 
     if (!orchestrator) {
+      routerLogger.warn({ phone: context.phone }, 'gemini_request_skipped: no API key — falling back to unknown');
       return this.fallbackAI(text, context, start, 'no_api_key');
     }
 
-    routerLogger.debug({ phone: context.phone }, 'Escalating to Gemini classifier');
+    routerLogger.debug(
+      {
+        phone: context.phone,
+        model: config.GEMINI_MODEL,
+        apiKeySet: !!config.GEMINI_API_KEY,
+      },
+      'gemini_request_started',
+    );
 
     const history = getConversationHistory(context.phone, 10);
     const geminiHistory = history.map((h) => ({
@@ -224,9 +246,21 @@ export class MessageRouter {
         role: context.user?.role,
       });
     } catch (error) {
-      routerLogger.error({ error, phone: context.phone }, 'AI classification failed');
+      routerLogger.error({ error, phone: context.phone }, 'gemini_request_failed');
       return this.fallbackAI(text, context, start, 'api_error');
     }
+
+    routerLogger.debug(
+      {
+        phone: context.phone,
+        gemini_intent: classification.intent,
+        gemini_confidence: classification.confidence,
+        gemini_requiresDatabase: classification.requiresDatabase,
+        gemini_entityKeys: Object.keys(classification.entities),
+        tokenCount: classification.tokenCount,
+      },
+      'gemini_response_received',
+    );
 
     const intent = classification.intent;
 
@@ -261,6 +295,15 @@ export class MessageRouter {
     try {
       const response = await this.executeIntent(intent, context, classification);
       this.recordAIExchange(context, text, intent, response);
+
+      routerLogger.debug(
+        {
+          phone: context.phone,
+          handler: intent,
+          responseLength: response.length,
+        },
+        'intent_handled',
+      );
 
       const latencyMs = Date.now() - start;
       routerLogger.info(

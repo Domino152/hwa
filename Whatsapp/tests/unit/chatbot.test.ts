@@ -187,6 +187,40 @@ describe('Intent Classifier', () => {
     it('classifies "i want to login"', () => {
       expect(classifyIntent('i want to login')).toBe(IntentName.Login);
     });
+
+    it('classifies "log in"', () => {
+      expect(classifyIntent('log in')).toBe(IntentName.Login);
+    });
+
+    it('classifies "i want to sign in"', () => {
+      expect(classifyIntent('i want to sign in')).toBe(IntentName.Login);
+    });
+  });
+
+  describe('Logout intent', () => {
+    it('classifies "logout"', () => {
+      expect(classifyIntent('logout')).toBe(IntentName.Logout);
+    });
+
+    it('classifies "log out"', () => {
+      expect(classifyIntent('log out')).toBe(IntentName.Logout);
+    });
+
+    it('classifies "sign out"', () => {
+      expect(classifyIntent('sign out')).toBe(IntentName.Logout);
+    });
+
+    it('classifies "Can I logout?" as logout (keyword match)', () => {
+      expect(classifyIntent('Can I logout?')).toBe(IntentName.Logout);
+    });
+
+    it('classifies "how do I log out"', () => {
+      expect(classifyIntent('how do I log out')).toBe(IntentName.Logout);
+    });
+
+    it('classifies "sign me out"', () => {
+      expect(classifyIntent('sign me out')).toBe(IntentName.Logout);
+    });
   });
 
   describe('Help intent', () => {

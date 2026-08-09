@@ -2,6 +2,7 @@ export enum IntentName {
   Greeting = 'greeting',
   Help = 'help',
   Login = 'login',
+  Logout = 'logout',
   Attendance = 'attendance',
   Fees = 'fees',
   Schedule = 'schedule',
@@ -139,6 +140,19 @@ export const INTENT_DEFINITIONS: IntentDefinition[] = [
       'access account',
       'i want to login',
       'i want to sign in',
+    ],
+  },
+  {
+    name: IntentName.Logout,
+    patterns: [
+      'logout',
+      'log out',
+      'sign out',
+      'signout',
+      'disconnect',
+      'unlink',
+      'log off',
+      'sign off',
     ],
   },
   {

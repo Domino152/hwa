@@ -29,6 +29,7 @@ export {
   greetingCard,
   helpCard,
   loginRequiredCard,
+  logoutCard,
   unknownIntentCard,
   sectionHeader,
   card,
