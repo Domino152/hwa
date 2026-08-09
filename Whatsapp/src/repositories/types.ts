@@ -165,6 +165,7 @@ export interface UserRecord {
   year: number;
   section: string;
   whatsappNumber: string | null;
+  whatsappSessionActive: boolean;
 }
 
 export interface PublicContentRecord {

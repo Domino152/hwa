@@ -58,6 +58,7 @@ export class AuthService {
 
   /**
    * Link a WhatsApp phone number to an authenticated user.
+   * Also activates the WhatsApp session.
    * Throws ConflictError if the phone is already linked to a different account.
    */
   async linkWhatsApp(userId: string, phone: string): Promise<LinkWhatsAppResponse> {
@@ -72,7 +73,7 @@ export class AuthService {
 
     const user = await User.findByIdAndUpdate(
       userId,
-      { whatsappNumber: normalizedPhone },
+      { whatsappNumber: normalizedPhone, whatsappSessionActive: true },
       { new: true },
     );
 
@@ -92,10 +93,45 @@ export class AuthService {
 
   /**
    * Unlink WhatsApp phone number from the user (logout from WhatsApp).
+   * Also deactivates the WhatsApp session.
    */
   async unlinkWhatsApp(userId: string): Promise<void> {
-    await User.findByIdAndUpdate(userId, { whatsappNumber: null });
+    await User.findByIdAndUpdate(userId, {
+      whatsappNumber: null,
+      whatsappSessionActive: false,
+    });
     authLogger.info({ userId }, 'WhatsApp unlinked');
+  }
+
+  /**
+   * Activate the WhatsApp session for a user.
+   * Called after successful login via the web portal.
+   */
+  async activateWhatsAppSession(userId: string): Promise<void> {
+    await User.findByIdAndUpdate(userId, { whatsappSessionActive: true });
+    authLogger.info({ userId }, 'WhatsApp session activated');
+  }
+
+  /**
+   * Deactivate the WhatsApp session for a user.
+   * Called when the user sends "logout" from WhatsApp.
+   * Does NOT unlink the phone number — only invalidates the session.
+   */
+  async deactivateWhatsAppSession(userId: string): Promise<void> {
+    await User.findByIdAndUpdate(userId, { whatsappSessionActive: false });
+    authLogger.info({ userId }, 'WhatsApp session deactivated');
+  }
+
+  /**
+   * Deactivate WhatsApp session by phone number.
+   * Used by the chatbot logout handler.
+   */
+  async deactivateWhatsAppSessionByPhone(phone: string): Promise<void> {
+    const user = await User.findOne({ whatsappNumber: phone });
+    if (user) {
+      await User.findByIdAndUpdate(user._id, { whatsappSessionActive: false });
+      authLogger.info({ userId: String(user._id) }, 'WhatsApp session deactivated via chatbot');
+    }
   }
 
   /**

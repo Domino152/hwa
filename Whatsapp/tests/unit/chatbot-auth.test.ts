@@ -34,9 +34,9 @@ describe('Chatbot Authentication Gating', () => {
   };
 
   describe('Public intents work without authentication', () => {
-    it('greeting works when not authenticated', async () => {
+    it('greeting returns login prompt when not authenticated', async () => {
       const res = await generateResponse(IntentName.Greeting, unauthenticatedContext);
-      expect(res).toContain('Welcome');
+      expect(res).toContain('Authentication Required');
     });
 
     it('help works when not authenticated', async () => {
@@ -44,9 +44,10 @@ describe('Chatbot Authentication Gating', () => {
       expect(res).toContain('Available Commands');
     });
 
-    it('login works when not authenticated', async () => {
+    it('login returns login URL when not authenticated', async () => {
       const res = await generateResponse(IntentName.Login, unauthenticatedContext);
-      expect(res).toContain('Login Portal');
+      expect(res).toContain('Login Required');
+      expect(res).toContain('login');
     });
 
     it('syllabus works when not authenticated', async () => {

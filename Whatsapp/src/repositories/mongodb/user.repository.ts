@@ -2,7 +2,7 @@ import { User } from '../../database/models/User.js';
 import type { IUserRepository } from '../user.repository.js';
 import type { UserRecord } from '../types.js';
 
-function toUserRecord(doc: { _id: unknown; fullName: string; role: 'student' | 'parent'; studentId: string; department: string; year: number; section: string; whatsappNumber: string | null }): UserRecord {
+function toUserRecord(doc: { _id: unknown; fullName: string; role: 'student' | 'parent'; studentId: string; department: string; year: number; section: string; whatsappNumber: string | null; whatsappSessionActive?: boolean }): UserRecord {
   return {
     id: String(doc._id),
     fullName: doc.fullName,
@@ -12,6 +12,7 @@ function toUserRecord(doc: { _id: unknown; fullName: string; role: 'student' | '
     year: doc.year,
     section: doc.section,
     whatsappNumber: doc.whatsappNumber,
+    whatsappSessionActive: doc.whatsappSessionActive ?? false,
   };
 }
 
@@ -53,6 +54,9 @@ export class MongoUserRepository implements IUserRepository {
   }
 
   async updateWhatsAppNumber(userId: string, phone: string | null): Promise<void> {
-    await User.findByIdAndUpdate(userId, { whatsappNumber: phone });
+    await User.findByIdAndUpdate(userId, {
+      whatsappNumber: phone,
+      whatsappSessionActive: phone !== null,
+    });
   }
 }

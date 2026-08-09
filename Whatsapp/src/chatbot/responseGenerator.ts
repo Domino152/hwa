@@ -1,6 +1,7 @@
 import { IntentName, PRIVATE_INTENTS, type ChatbotContext, type AuthenticatedUserInfo } from './intents.js';
 import { config } from '../config/index.js';
 import { integration } from '../integration/index.js';
+import { User } from '../database/models/User.js';
 import type { KnowledgeCategory } from '../database/models/KnowledgeBase.js';
 import { parseNaturalDate, type ParsedDate } from './dateParser.js';
 import {
@@ -44,7 +45,7 @@ export async function generateResponse(
   const session = getSession(context.phone);
 
   if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
-    return loginRequiredCard(`${config.LOGIN_PORTAL_URL}?phone=${context.phone}`);
+    return loginRequiredCard(`${config.PUBLIC_APP_URL}/login?phone=${context.phone}`);
   }
 
   switch (intent) {
@@ -98,33 +99,43 @@ function handleGreeting(session: ChatSession, user?: AuthenticatedUserInfo): str
     return greetingCard(user.fullName, isFirstTime);
   }
 
-  return greetingCard('Student', isFirstTime);
+  // Unauthenticated: return login-required greeting (NO personalized data)
+  return loginRequiredCard(`${config.PUBLIC_APP_URL}/login?phone=${session.phone}`);
 }
 
 function handleLogin(phone: string): string {
-  const url = `${config.LOGIN_PORTAL_URL}?phone=${phone}`;
+  const url = `${config.PUBLIC_APP_URL}/login?phone=${phone}`;
   return [
-    '🔑 *Login Portal*',
+    '🔐 *Login Required*',
     '',
-    'Access your personal academic data:',
+    'Please log in to access your personal academic information.',
     '',
     `🔗 ${url}`,
     '',
-    '_After logging in, return here._',
+    '_After logging in, return to this chat._',
   ].join('\n');
 }
 
-function handleLogout(isAuthenticated: boolean, phone: string): string {
+async function handleLogout(isAuthenticated: boolean, phone: string): Promise<string> {
+  const loginUrl = `${config.PUBLIC_APP_URL}/login?phone=${phone}`;
+
   if (!isAuthenticated) {
     return [
       'ℹ️ *Already Logged Out*',
       '',
       'You are not currently logged in.',
       '',
-      `🔗 Login: ${config.LOGIN_PORTAL_URL}?phone=${phone}`,
+      `🔗 Login: ${loginUrl}`,
     ].join('\n');
   }
-  return logoutCard(`${config.LOGIN_PORTAL_URL}?phone=${phone}`);
+
+  // CRITICAL: Actually invalidate the WhatsApp session in the database
+  const user = await User.findOne({ whatsappNumber: phone });
+  if (user) {
+    await User.findByIdAndUpdate(user._id, { whatsappSessionActive: false });
+  }
+
+  return logoutCard(loginUrl);
 }
 
 async function handleAttendance(

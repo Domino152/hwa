@@ -9,6 +9,7 @@ export interface IUser extends Document {
   role: UserRole;
   studentId: string;
   whatsappNumber: string | null;
+  whatsappSessionActive: boolean;
   department: string;
   year: number;
   section: string;
@@ -61,6 +62,11 @@ const userSchema = new Schema<IUser, IUserModel>(
       unique: true,
       sparse: true,
     },
+    whatsappSessionActive: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     department: {
       type: String,
       required: [true, 'Department is required'],
@@ -89,7 +95,14 @@ const userSchema = new Schema<IUser, IUserModel>(
 
 
 userSchema.statics.findByPhone = function (phone: string) {
-  return this.findOne({ whatsappNumber: phone, isActive: true });
+  return this.findOne({
+    whatsappNumber: phone,
+    isActive: true,
+    $or: [
+      { whatsappSessionActive: true },
+      { whatsappSessionActive: { $exists: false } },
+    ],
+  });
 };
 
 userSchema.statics.findByUsername = function (username: string) {

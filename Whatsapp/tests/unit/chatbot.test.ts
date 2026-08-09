@@ -281,10 +281,17 @@ describe('Response Generator', () => {
     vi.mocked(integration.results.getByStudentId).mockResolvedValue({ results: [], cgpa: 0, hasData: false });
   });
 
-  it('greeting response contains welcome', async () => {
+  it('greeting response returns login prompt when not authenticated', async () => {
     const response = await generateResponse(IntentName.Greeting, ctx);
+    expect(response).toContain('Authentication Required');
+    expect(response).toContain('login');
+  });
+
+  it('greeting response contains welcome when authenticated', async () => {
+    const authCtx = { ...ctx, isAuthenticated: true, user: { id: '1', fullName: 'Arjun', role: 'student' as const, studentId: '22CSE001' } };
+    const response = await generateResponse(IntentName.Greeting, authCtx);
     expect(response).toContain('Welcome');
-    expect(response).toContain('College AI Assistant');
+    expect(response).toContain('Arjun');
   });
 
   it('attendance response returns login prompt when not authenticated', async () => {
@@ -385,7 +392,7 @@ describe('Response Generator', () => {
 
   it('login response contains login URL', async () => {
     const response = await generateResponse(IntentName.Login, ctx);
-    expect(response).toContain('Login Portal');
+    expect(response).toContain('Login Required');
     expect(response).toContain('login');
   });
 
@@ -415,17 +422,17 @@ describe('ChatbotService', () => {
     vi.mocked(integration.results.getByStudentId).mockResolvedValue({ results: [], cgpa: 0, hasData: false });
   });
 
-  it('processes "Hi" → greeting response', async () => {
+  it('processes "Hi" → login prompt (not linked)', async () => {
     const result = await service.processMessage('Hi', { phone: '111' });
     expect(result.intent).toBe(IntentName.Greeting);
-    expect(result.response).toContain('Welcome');
+    expect(result.response).toContain('Authentication Required');
     expect(result.originalText).toBe('Hi');
   });
 
   it('processes "Login" → login response', async () => {
     const result = await service.processMessage('Login', { phone: '111' });
     expect(result.intent).toBe(IntentName.Login);
-    expect(result.response).toContain('Login Portal');
+    expect(result.response).toContain('Login Required');
   });
 
   it('processes "Attendance" → login prompt (not linked)', async () => {

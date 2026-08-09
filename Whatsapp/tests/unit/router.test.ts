@@ -283,4 +283,43 @@ describe('MessageRouter', () => {
       expect(result.intent).toBe(IntentName.Login);
     });
   });
+
+  describe('authentication gating', () => {
+    it('returns login-required for unauthenticated greeting', async () => {
+      vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+      const result = await router.route('Hi', { phone: 'unauth-1' });
+      expect(result.intent).toBe(IntentName.Greeting);
+      expect(result.response).toContain('Authentication Required');
+    });
+
+    it('returns login-required for unauthenticated button click on private intent', async () => {
+      vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+      const result = await router.route('intent:attendance', { phone: 'unauth-2' });
+      expect(result.routedVia).toBe('button');
+      expect(result.response).toContain('Authentication Required');
+    });
+
+    it('login URL uses PUBLIC_APP_URL', async () => {
+      vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+      const result = await router.route('intent:attendance', { phone: 'unauth-3' });
+      expect(result.response).toContain('http://localhost:5173/login?phone=unauth-3');
+    });
+
+    it('does not reveal student name for unauthenticated user', async () => {
+      vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+      const result = await router.route('Hi', { phone: 'unauth-4' });
+      expect(result.response).not.toContain('Welcome back');
+      expect(result.response).not.toContain('Arjun');
+    });
+
+    it('blocks all private intents when unauthenticated', async () => {
+      vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+
+      const privateIntents = ['intent:attendance', 'intent:fees', 'intent:schedule', 'intent:results', 'intent:profile'];
+      for (const action of privateIntents) {
+        const result = await router.route(action, { phone: 'unauth-5' });
+        expect(result.response).toContain('Authentication Required');
+      }
+    });
+  });
 });
