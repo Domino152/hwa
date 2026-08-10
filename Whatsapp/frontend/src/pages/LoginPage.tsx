@@ -6,6 +6,7 @@ import { AuthStatus } from '../components/AuthStatus';
 export function LoginPage() {
   const [searchParams] = useSearchParams();
   const phone = searchParams.get('phone') || '';
+  const loginToken = searchParams.get('token') || '';
   const [isLinked, setIsLinked] = useState(false);
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function LoginPage() {
         {isLinked ? (
           <AuthStatus onLogout={handleLogout} />
         ) : (
-          <LoginForm phone={phone} onSuccess={() => setIsLinked(true)} />
+          <LoginForm phone={phone} loginToken={loginToken} onSuccess={() => setIsLinked(true)} />
         )}
 
         <p className="text-center text-xs text-gray-400">

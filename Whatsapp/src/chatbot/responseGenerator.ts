@@ -36,7 +36,7 @@ export interface GenerateOptions {
 
 export async function getLoginUrl(phone: string): Promise<string> {
   const { rawToken } = await authService.generateLoginToken(phone);
-  return `${config.PUBLIC_APP_URL}/login?token=${rawToken}`;
+  return `${config.PUBLIC_APP_URL}/#/login?token=${rawToken}`;
 }
 
 /**

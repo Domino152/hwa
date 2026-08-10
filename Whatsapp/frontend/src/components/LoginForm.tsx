@@ -19,10 +19,11 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 interface LoginFormProps {
   phone: string;
+  loginToken: string;
   onSuccess: () => void;
 }
 
-export function LoginForm({ phone, onSuccess }: LoginFormProps) {
+export function LoginForm({ phone, loginToken, onSuccess }: LoginFormProps) {
   const [role, setRole] = useState<'student' | 'parent'>('student');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,10 +50,13 @@ export function LoginForm({ phone, onSuccess }: LoginFormProps) {
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
 
-      try {
-        await api.post('/auth/link-whatsapp', { phone });
-      } catch {
-        // Link may already exist — continue
+      const linkPhone = await resolveLinkPhone(loginToken, phone);
+      if (linkPhone) {
+        try {
+          await api.post('/auth/link-whatsapp', { phone: linkPhone });
+        } catch {
+          // Link may already exist — continue
+        }
       }
 
       onSuccess();
@@ -101,6 +105,28 @@ export function LoginForm({ phone, onSuccess }: LoginFormProps) {
       </CardContent>
     </Card>
   );
+}
+
+async function resolveLinkPhone(loginToken: string, phoneParam: string): Promise<string | null> {
+  if (loginToken) {
+    try {
+      const redeemRes = await api.get<{ data: { phone?: string } }>('/auth/redeem-token', {
+        params: { token: loginToken },
+      });
+      if (redeemRes.data.data?.phone) {
+        return redeemRes.data.data.phone;
+      }
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+          ?.message;
+      throw new Error(
+        message ||
+          'This login link is invalid or expired. Send "login" in WhatsApp to get a new link.',
+      );
+    }
+  }
+  return phoneParam || null;
 }
 
 interface FormContentProps {

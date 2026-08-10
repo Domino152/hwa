@@ -170,11 +170,12 @@ export class AuthService {
 
   /**
    * Redeem a single-use login token.
-   * Returns the bound phone number if valid, null otherwise.
-   * Activates the WhatsApp session so the next message is recognized as authenticated.
+   * Returns the bound phone number (and the user id if already linked).
+   * If a user is already linked to that phone, their WhatsApp session is
+   * activated; otherwise the frontend links the phone after login.
    * Marks the token as used to prevent replay.
    */
-  async redeemLoginToken(rawToken: string): Promise<{ phone: string; userId: string } | null> {
+  async redeemLoginToken(rawToken: string): Promise<{ phone: string; userId: string | null } | null> {
     const tokenDoc = await LoginToken.findValid(rawToken);
     if (!tokenDoc) {
       authLogger.warn('Login token redemption failed (invalid, expired, or already used)');
@@ -182,19 +183,20 @@ export class AuthService {
     }
 
     const user = await User.findOne({ whatsappNumber: tokenDoc.phone });
-    if (!user) {
-      authLogger.warn({ phone: tokenDoc.phone }, 'No user linked to this phone — token is stale');
-      return null;
+
+    let userId: string | null = null;
+    if (user) {
+      await User.findByIdAndUpdate(user._id, { whatsappSessionActive: true });
+      userId = String(user._id);
     }
 
-    await User.findByIdAndUpdate(user._id, { whatsappSessionActive: true });
     await LoginToken.markUsed(String(tokenDoc._id));
 
     authLogger.info(
-      { tokenId: String(tokenDoc._id), phone: tokenDoc.phone, userId: String(user._id) },
-      'Login token redeemed — WhatsApp session activated',
+      { tokenId: String(tokenDoc._id), phone: tokenDoc.phone, userId },
+      'Login token redeemed',
     );
 
-    return { phone: tokenDoc.phone, userId: String(user._id) };
+    return { phone: tokenDoc.phone, userId };
   }
 }
