@@ -68,6 +68,9 @@ export interface MessageListResult {
 }
 
 export class InboxService {
+  private readonly recentlyProcessed = new Map<string, number>();
+  private static readonly DEDUPE_TTL_MS = 10 * 60_000;
+
   constructor(private readonly chatService: ChatService) {}
 
   async handleIncomingMessage(msg: WAMessage): Promise<void> {
@@ -81,14 +84,10 @@ export class InboxService {
       const messageId = getMessageId(msg);
       const pushName = msg.pushName ?? undefined;
 
-      const conversation = await this.upsertConversation({
-        phone,
-        jid,
-        pushName,
-        lastMessage: content,
-        direction: 'incoming',
-        timestamp,
-      });
+      if (this.isRecentlyProcessed(messageId)) {
+        autoReplyLogger.info({ messageId }, 'Duplicate incoming message ignored');
+        return;
+      }
 
       const messageData: IMessage = {
         messageId,
@@ -102,45 +101,58 @@ export class InboxService {
         requestId: null,
       };
 
-      const updatedConversation = await Conversation.addMessage(
-        String(conversation._id),
-        messageData,
-      );
+      let conversation: IConversation | null = null;
+      try {
+        conversation = await this.upsertConversation({
+          phone,
+          jid,
+          pushName,
+          lastMessage: content,
+          direction: 'incoming',
+          timestamp,
+        });
+        const updatedConversation = await Conversation.addMessage(
+          String(conversation._id),
+          messageData,
+        );
+        if (!updatedConversation) {
+          autoReplyLogger.info({ messageId }, 'Duplicate persisted message ignored');
+          return;
+        }
 
-      const savedMessage = updatedConversation?.messages[updatedConversation.messages.length - 1];
+        const savedMessage = updatedConversation.messages[updatedConversation.messages.length - 1];
+        autoReplyLogger.info(
+          { phone, messageId, type, contentLength: content.length },
+          'Incoming message persisted',
+        );
 
-      autoReplyLogger.info(
-        { phone, messageId, type, contentLength: content.length },
-        'Incoming message persisted',
-      );
-
-      const payload: IncomingMessagePayload = {
-        id: savedMessage?.messageId ?? messageId,
-        messageId,
-        phone,
-        jid,
-        content,
-        type,
-        direction: 'incoming',
-        status: 'received',
-        timestamp: timestamp.toISOString(),
-        ...(pushName ? { pushName } : {}),
-      };
-
-      emitIncomingMessage(
-        String(conversation._id),
-        phone,
-        payload,
-        {
+        const payload: IncomingMessagePayload = {
+          id: savedMessage?.messageId ?? messageId,
+          messageId,
+          phone,
+          jid,
+          content,
+          type,
+          direction: 'incoming',
+          status: 'received',
+          timestamp: timestamp.toISOString(),
+          ...(pushName ? { pushName } : {}),
+        };
+        emitIncomingMessage(String(conversation._id), phone, payload, {
           phone,
           jid,
           lastMessage: content,
           lastMessageAt: timestamp.toISOString(),
           lastMessageDirection: 'incoming',
-          unreadCount: conversation.unreadCount,
+          unreadCount: updatedConversation.unreadCount,
           ...(pushName ? { contactName: pushName } : {}),
-        },
-      );
+        });
+      } catch (err) {
+        autoReplyLogger.error(
+          { err, phone, messageId },
+          'Incoming message persistence failed; continuing with reply',
+        );
+      }
 
       await this.sendAutoReply(conversation, jid, phone, content);
     } catch (err) {
@@ -149,7 +161,7 @@ export class InboxService {
   }
 
   private async sendAutoReply(
-    conversation: IConversation,
+    conversation: IConversation | null,
     jid: string,
     phone: string,
     userMessage: string,
@@ -165,7 +177,7 @@ export class InboxService {
 
       // For greeting and help: send interactive list menu (single message, no text+buttons)
       if (chatbotResult.intent === 'greeting' || chatbotResult.intent === 'help') {
-        await this.sendInteractiveMenu(jid, phone, chatbotResult, requestId);
+        await this.sendInteractiveMenu(conversation, jid, phone, chatbotResult, requestId);
         return;
       }
 
@@ -190,22 +202,6 @@ export class InboxService {
         }
       }
 
-      const outgoingMessageData: IMessage = {
-        messageId: result.messageId,
-        direction: 'outgoing',
-        type: 'text',
-        content: chatbotResult.response,
-        status: 'sent',
-        timestamp: new Date(),
-        fromMe: true,
-        pushName: null,
-        requestId,
-      };
-
-      await Conversation.addMessage(
-        String(conversation._id),
-        outgoingMessageData,
-      );
     } catch (err) {
       autoReplyLogger.error(
         { err, phone },
@@ -220,35 +216,25 @@ export class InboxService {
    * For help: sends only the list menu.
    */
   private async sendInteractiveMenu(
+    conversation: IConversation | null,
     jid: string,
     phone: string,
     chatbotResult: ChatbotResponse,
     requestId: string,
   ): Promise<void> {
     try {
-      const conversation = await Conversation.findOne({ phone });
-      if (!conversation) return;
-
       // For greeting: send the personalized text first
       if (chatbotResult.intent === 'greeting') {
-        const textResult = await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
-
-        const outgoingTextData: IMessage = {
-          messageId: textResult.messageId,
-          direction: 'outgoing',
-          type: 'text',
-          content: chatbotResult.response,
-          status: 'sent',
-          timestamp: new Date(),
-          fromMe: true,
-          pushName: null,
-          requestId,
-        };
-        await Conversation.addMessage(String(conversation._id), outgoingTextData);
+        await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
       }
 
       // Send the interactive list menu
-      const userData = await integration.findUserByPhone(phone);
+      let userData = null;
+      try {
+        userData = await integration.findUserByPhone(phone);
+      } catch (err) {
+        autoReplyLogger.warn({ err, phone }, 'User lookup failed; sending public menu');
+      }
       const menu = buildHelpMenu(!!userData);
 
       const listResult = await this.chatService.sendListMessage(jid, menu);
@@ -259,18 +245,19 @@ export class InboxService {
       );
 
       // Record the list menu as an outgoing message
-      const outgoingMenuData: IMessage = {
-        messageId: listResult ?? `menu-${Date.now()}`,
-        direction: 'outgoing',
-        type: 'text',
-        content: `[Interactive Menu: ${chatbotResult.intent}]`,
-        status: 'sent',
-        timestamp: new Date(),
-        fromMe: true,
-        pushName: null,
-        requestId,
-      };
-      await Conversation.addMessage(String(conversation._id), outgoingMenuData);
+      if (conversation && listResult) {
+        await Conversation.addMessage(String(conversation._id), {
+          messageId: listResult,
+          direction: 'outgoing',
+          type: 'text',
+          content: `[Interactive Menu: ${chatbotResult.intent}]`,
+          status: 'sent',
+          timestamp: new Date(),
+          fromMe: true,
+          pushName: null,
+          requestId,
+        });
+      }
     } catch (err) {
       autoReplyLogger.error(
         { err, phone, intent: chatbotResult.intent },
@@ -284,6 +271,17 @@ export class InboxService {
         autoReplyLogger.error({ err: fallbackErr, phone }, 'Fallback text reply also failed');
       }
     }
+  }
+
+  private isRecentlyProcessed(messageId: string): boolean {
+    if (messageId === 'unknown') return false;
+    const now = Date.now();
+    for (const [id, processedAt] of this.recentlyProcessed) {
+      if (now - processedAt > InboxService.DEDUPE_TTL_MS) this.recentlyProcessed.delete(id);
+    }
+    if (this.recentlyProcessed.has(messageId)) return true;
+    this.recentlyProcessed.set(messageId, now);
+    return false;
   }
 
   private async upsertConversation(params: {
@@ -303,10 +301,6 @@ export class InboxService {
         ...(params.pushName ? { contactName: params.pushName } : {}),
       },
     };
-
-    if (params.direction === 'incoming') {
-      update.$inc = { unreadCount: 1 };
-    }
 
     const conversation = await Conversation.findOneAndUpdate(
       { phone: params.phone },

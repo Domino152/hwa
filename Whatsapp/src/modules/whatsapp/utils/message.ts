@@ -84,6 +84,12 @@ export function extractMessageContent(msg: WAMessage): ExtractedMessage {
       return { type: 'text', content: rowId };
     }
 
+    case 'templateButtonReplyMessage': {
+      const templateReply = (msg.message as Record<string, unknown>)?.templateButtonReplyMessage as Record<string, unknown> | undefined;
+      const selectedId = (templateReply?.selectedId as string) ?? '';
+      return { type: 'text', content: selectedId };
+    }
+
     case 'contactMessage':
       return { type: 'other', content: '[contact]' };
 

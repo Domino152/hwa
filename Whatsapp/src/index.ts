@@ -38,7 +38,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }, SHUTDOWN_TIMEOUT_MS);
 
   try {
-    await chatService.logout();
+    await chatService.shutdown();
     await disconnectDB();
     logger.info('Graceful shutdown complete');
   } catch (err) {

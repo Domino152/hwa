@@ -30,8 +30,9 @@ import {
 type ConnectionStateStr = 'connecting' | 'open' | 'close';
 
 const QR_TIMEOUT_MS = 60_000;
-const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+const CONNECTING_STALE_MIN_MS = 60_000;
 
 export class ChatService {
   private sock: WASocket | null = null;
@@ -43,11 +44,22 @@ export class ChatService {
   private readonly logger: pino.Logger;
   private readonly baileysLogger: pino.Logger;
   private readonly sessionDir: string;
+  private readonly watchdogIntervalMs: number;
   private readonly msgRetryCounterCache = new NodeCache();
   private inbox: InboxService | null = null;
+  private initializingPromise: Promise<void> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private qrExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private shutdownRequested = false;
+  private sessionInvalid = false;
+  private invalidSessionQrAttempted = false;
+  private connectingSince = 0;
+  private watchdogHealthyLogged = false;
 
-  constructor(sessionDir?: string) {
+  constructor(sessionDir?: string, watchdogIntervalMs?: number) {
     this.sessionDir = sessionDir ?? config.WA_SESSION_DIR;
+    this.watchdogIntervalMs = watchdogIntervalMs ?? config.WA_WATCHDOG_INTERVAL_MS;
     this.logger = logger.child({ module: 'whatsapp' });
     this.baileysLogger = logger.child(
       { module: 'whatsapp-baileys' },
@@ -60,17 +72,50 @@ export class ChatService {
   }
 
   async initialize(): Promise<void> {
-    if (this.sock) {
-      this.logger.warn('Ending existing socket before re-initializing');
-      try { this.sock.end(undefined); } catch { /* ignore */ }
-      this.sock = null;
+    this.shutdownRequested = false;
+    this.startWatchdog();
+
+    if (this.state === 'open' && this.sock?.ws.isOpen) return;
+    if (this.initializingPromise) {
+      this.logger.debug('WhatsApp reconnect deferred because already connecting');
+      return this.initializingPromise;
     }
 
-    this.reconnectAttempts = 0;
+    this.initializingPromise = this.createSocket();
+    let failure: unknown;
+    try {
+      await this.initializingPromise;
+    } catch (err) {
+      failure = err;
+      this.state = 'close';
+      this.logger.error({ err }, 'WhatsApp reconnect failed');
+    } finally {
+      this.initializingPromise = null;
+    }
+
+    if (failure) {
+      this.scheduleReconnect();
+      throw failure instanceof Error ? failure : new Error(String(failure));
+    }
+  }
+
+  private async createSocket(): Promise<void> {
+    this.clearReconnectTimer();
+    this.state = 'connecting';
+    this.connectingSince = Date.now();
+    this.watchdogHealthyLogged = false;
+    this.logger.info({ attempt: this.reconnectAttempts + 1 }, 'WhatsApp reconnect started');
+
+    const oldSocket = this.sock;
+    this.sock = null;
+    if (oldSocket) {
+      try { oldSocket.end(undefined); } catch { /* already closed */ }
+    }
 
     const { state, saveCreds } = await useMultiFileAuthState(this.sessionDir);
+    this.logger.info({ registered: state.creds.registered }, 'WhatsApp session loaded');
 
-    this.sock = makeWASocket({
+    const socket = makeWASocket({
       logger: this.baileysLogger as any,
       auth: {
         creds: state.creds,
@@ -83,66 +128,63 @@ export class ChatService {
       syncFullHistory: false,
       fireInitQueries: false,
       shouldSyncHistoryMessage: () => false,
-      getMessage: async (_key: WAMessageKey): Promise<WAMessageContent | undefined> => {
-        return undefined;
-      },
+      getMessage: (_key: WAMessageKey): Promise<WAMessageContent | undefined> => Promise.resolve(undefined),
     });
 
-    this.setupEventHandlers(saveCreds);
+    this.sock = socket;
+    this.setupEventHandlers(socket, saveCreds);
     this.logger.info('WhatsApp service initialized');
   }
 
-  private setupEventHandlers(saveCreds: () => Promise<void>): void {
-    if (!this.sock) return;
-
-    this.sock.ev.on('connection.update', async (update) => {
-      await this.handleConnectionUpdate(update, saveCreds);
+  private setupEventHandlers(socket: WASocket, saveCreds: () => Promise<void>): void {
+    socket.ev.on('connection.update', (update) => {
+      if (this.sock !== socket) return;
+      try {
+        this.handleConnectionUpdate(update);
+      } catch (err) {
+        this.logger.error({ err }, 'Failed to handle WhatsApp connection update');
+      }
     });
 
-    this.sock.ev.on('creds.update', async () => {
-      await saveCreds();
-      this.logger.debug('Credentials saved');
+    socket.ev.on('creds.update', () => {
+      if (this.sock !== socket) return;
+      void saveCreds()
+        .then(() => this.logger.debug('Credentials saved'))
+        .catch((err) => this.logger.error({ err }, 'Failed to save WhatsApp credentials'));
     });
 
-    this.sock.ev.on('messages.upsert', (upsert) => {
-      if (upsert.type !== 'notify') return;
-      if (!this.inbox) return;
-
+    socket.ev.on('messages.upsert', (upsert) => {
+      if (this.sock !== socket || upsert.type !== 'notify' || !this.inbox) return;
       for (const msg of upsert.messages) {
-        void this.inbox.handleIncomingMessage(msg);
+        void this.inbox.handleIncomingMessage(msg).catch((err) => {
+          this.logger.error({ err, msgKey: msg.key }, 'Incoming message processing failed');
+        });
       }
     });
   }
 
-  private async handleConnectionUpdate(
+  private handleConnectionUpdate(
     update: { connection?: string; lastDisconnect?: { error?: Boom | Error }; qr?: string },
-    _saveCreds: () => Promise<void>,
-  ): Promise<void> {
+  ): void {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
       this.qr = qr;
       this.state = 'connecting';
-      this.logger.info('QR code received — scan with WhatsApp');
+      this.sessionInvalid = false;
+      this.invalidSessionQrAttempted = false;
+      this.logger.info('WhatsApp requires QR');
       emitToAll('qr', { qr, timeout: QR_TIMEOUT_MS });
+      qrCodeTerminal.generate(qr, { small: true }, (code: string) => console.log(code));
 
-      console.log('\n');
-      console.log('╔══════════════════════════════════════════╗');
-      console.log('║  Scan this QR code with WhatsApp         ║');
-      console.log('║  Settings → Linked Devices → Link        ║');
-      console.log('╚══════════════════════════════════════════╝');
-      console.log('\n');
-      qrCodeTerminal.generate(qr, { small: true }, (code: string) => {
-        console.log(code);
-      });
-      console.log('\n');
-
-      setTimeout(() => {
+      if (this.qrExpiryTimer) clearTimeout(this.qrExpiryTimer);
+      this.qrExpiryTimer = setTimeout(() => {
         if (this.qr === qr) {
           this.qr = null;
-          this.logger.warn('QR code expired — waiting for new one');
+          this.logger.warn('QR code expired; waiting for a new one');
         }
       }, QR_TIMEOUT_MS);
+      this.qrExpiryTimer.unref?.();
     }
 
     if (connection === 'close') {
@@ -152,64 +194,46 @@ export class ChatService {
         : undefined;
 
       this.logger.warn({ statusCode }, 'Connection closed');
+      this.state = 'close';
+      this.connectedAt = null;
+      this.userJid = null;
+      if (this.sock) {
+        try { this.sock.end(undefined); } catch { /* already closed */ }
+        this.sock = null;
+      }
+
+      if (this.shutdownRequested) return;
+
+      if (statusCode === DisconnectReason.loggedOut || statusCode === DisconnectReason.forbidden) {
+        this.sessionInvalid = true;
+        this.qr = null;
+        this.clearReconnectTimer();
+        this.logger.error({ statusCode }, 'WhatsApp session invalid');
+        this.logger.warn('WhatsApp requires QR; automatic reconnect paused');
+        emitToAll('connection-status', {
+          state: 'close',
+          timestamp: new Date().toISOString(),
+        });
+        if (
+          statusCode === DisconnectReason.loggedOut
+          && !this.invalidSessionQrAttempted
+        ) {
+          this.invalidSessionQrAttempted = true;
+          void this.initialize().catch((err) => {
+            this.logger.error({ err }, 'Unable to create QR socket for invalid session');
+          });
+        }
+        return;
+      }
 
       if (statusCode === DisconnectReason.restartRequired) {
-        this.logger.info('restartRequired received — reconnecting with saved credentials');
-        this.reconnectAttempts = 0;
-        this.state = 'close';
         this.qr = null;
-        emitToAll('connection-status', {
-          state: 'connecting',
-          timestamp: new Date().toISOString(),
-        });
-        await this.initialize();
+        this.logger.info('restartRequired received; reconnecting with saved credentials');
+        this.scheduleReconnect(0);
         return;
       }
 
-      if (statusCode === DisconnectReason.loggedOut) {
-        this.state = 'close';
-        this.qr = null;
-        this.connectedAt = null;
-        this.userJid = null;
-        this.reconnectAttempts = 0;
-        this.logger.fatal('Logged out — a new QR scan is required');
-        emitToAll('connection-status', {
-          state: 'close',
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
-
-      if (statusCode === DisconnectReason.forbidden) {
-        this.state = 'close';
-        this.logger.fatal('Account forbidden — access denied by WhatsApp');
-        emitToAll('connection-status', {
-          state: 'close',
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
-
-      if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-        this.reconnectAttempts++;
-        const delay = Math.min(
-          RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1),
-          30_000,
-        );
-        this.logger.info({ attempt: this.reconnectAttempts, delay }, 'Reconnecting...');
-        emitToAll('connection-status', {
-          state: 'connecting',
-          timestamp: new Date().toISOString(),
-        });
-        setTimeout(() => this.initialize(), delay);
-      } else {
-        this.state = 'close';
-        this.logger.fatal('Max reconnect attempts reached — giving up');
-        emitToAll('connection-status', {
-          state: 'close',
-          timestamp: new Date().toISOString(),
-        });
-      }
+      this.scheduleReconnect();
     }
 
     if (connection === 'open') {
@@ -217,13 +241,92 @@ export class ChatService {
       this.qr = null;
       this.connectedAt = new Date().toISOString();
       this.reconnectAttempts = 0;
+      this.sessionInvalid = false;
+      this.invalidSessionQrAttempted = false;
       this.userJid = this.sock?.user?.id ?? null;
-      this.logger.info({ userJid: this.userJid }, 'WhatsApp connected successfully');
+      this.logger.info({ userJid: this.userJid }, 'WhatsApp reconnect successful');
       emitToAll('connection-status', {
         state: 'open',
         timestamp: this.connectedAt,
       });
     }
+  }
+
+  private scheduleReconnect(delayOverride?: number): void {
+    if (this.shutdownRequested || this.sessionInvalid || this.state === 'open') return;
+    if (this.initializingPromise || this.reconnectTimer) {
+      this.logger.debug('WhatsApp reconnect deferred because already connecting');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const exponent = Math.min(this.reconnectAttempts - 1, 10);
+    const delay = delayOverride ?? Math.min(
+      RECONNECT_BASE_DELAY_MS * Math.pow(2, exponent),
+      RECONNECT_MAX_DELAY_MS,
+    );
+    this.logger.info({ attempt: this.reconnectAttempts, delayMs: delay }, 'WhatsApp reconnect scheduled');
+    emitToAll('connection-status', {
+      state: 'connecting',
+      timestamp: new Date().toISOString(),
+    });
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.initialize().catch(() => {
+        // initialize logs the failure and schedules another capped-backoff retry.
+      });
+    }, delay);
+    this.reconnectTimer.unref?.();
+  }
+
+  private startWatchdog(): void {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => this.runWatchdog(), this.watchdogIntervalMs);
+    this.watchdogTimer.unref?.();
+    this.logger.info({ intervalMs: this.watchdogIntervalMs }, 'WhatsApp watchdog started');
+  }
+
+  private runWatchdog(): void {
+    if (this.shutdownRequested || this.sessionInvalid) return;
+
+    if (this.state === 'open' && this.sock?.ws.isOpen) {
+      if (!this.watchdogHealthyLogged) {
+        this.logger.info('WhatsApp watchdog healthy');
+        this.watchdogHealthyLogged = true;
+      }
+      return;
+    }
+
+    if (this.initializingPromise || this.reconnectTimer) return;
+    if (this.state === 'connecting' && this.qr) return;
+
+    const connectingTooLong = this.state === 'connecting'
+      && Date.now() - this.connectingSince >= Math.max(
+        CONNECTING_STALE_MIN_MS,
+        this.watchdogIntervalMs * 2,
+      );
+    const stale = this.state === 'close'
+      || (this.state === 'open' && !this.sock?.ws.isOpen)
+      || connectingTooLong;
+    if (!stale) return;
+
+    this.watchdogHealthyLogged = false;
+    this.logger.warn(
+      { state: this.state, socketOpen: this.sock?.ws.isOpen ?? false },
+      'WhatsApp watchdog detected stale connection',
+    );
+    if (this.sock) {
+      try { this.sock.end(undefined); } catch { /* already closed */ }
+      this.sock = null;
+    }
+    this.state = 'close';
+    this.scheduleReconnect(0);
+  }
+
+  private clearReconnectTimer(): void {
+    if (!this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
   async sendMessage(
@@ -241,29 +344,8 @@ export class ChatService {
     try {
       const result = await this.sock.sendMessage(jid, { text });
       const messageId = result?.key?.id ?? 'unknown';
-
       this.logger.info({ jid, messageId, requestId }, 'Message sent');
-
-      if (this.inbox) {
-        const conversation = await this.inbox.upsertConversationForOutgoing(
-          phone,
-          jid,
-          text,
-          timestamp,
-        );
-        await this.inbox.recordOutgoingMessage({
-          conversationId: conversation._id,
-          phone,
-          jid,
-          messageId,
-          content: text,
-          type: 'text',
-          status: 'sent',
-          timestamp,
-          requestId,
-        });
-      }
-
+      await this.persistOutgoingMessage({ phone, jid, text, timestamp, messageId, requestId });
       return { messageId };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -287,24 +369,68 @@ export class ChatService {
             });
           }
         } catch (persistErr) {
-          this.logger.error(
-            { err: persistErr, messageId: 'unknown' },
-            'Failed to persist failed-message record',
-          );
+          this.logger.error({ err: persistErr }, 'Failed to persist failed-message record');
         }
       }
-
       throw err;
     }
   }
 
-  onIncomingMessage(msg: WAMessage): void {
-    if (this.inbox) {
-      void this.inbox.handleIncomingMessage(msg);
+  private async persistOutgoingMessage(params: {
+    phone: string;
+    jid: string;
+    text: string;
+    timestamp: Date;
+    messageId: string;
+    requestId: string;
+  }): Promise<void> {
+    if (!this.inbox) return;
+    try {
+      const conversation = await this.inbox.upsertConversationForOutgoing(
+        params.phone,
+        params.jid,
+        params.text,
+        params.timestamp,
+      );
+      await this.inbox.recordOutgoingMessage({
+        conversationId: conversation._id,
+        phone: params.phone,
+        jid: params.jid,
+        messageId: params.messageId,
+        content: params.text,
+        type: 'text',
+        status: 'sent',
+        timestamp: params.timestamp,
+        requestId: params.requestId,
+      });
+    } catch (err) {
+      this.logger.error({ err, messageId: params.messageId }, 'Message sent but persistence failed');
     }
   }
 
-  async logout(): Promise<void> {
+  onIncomingMessage(msg: WAMessage): void {
+    if (!this.inbox) return;
+    void this.inbox.handleIncomingMessage(msg).catch((err) => {
+      this.logger.error({ err, msgKey: msg.key }, 'Incoming message processing failed');
+    });
+  }
+
+  logout(): Promise<void> {
+    this.shutdown();
+    return Promise.resolve();
+  }
+
+  shutdown(): void {
+    this.shutdownRequested = true;
+    this.clearReconnectTimer();
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+    if (this.qrExpiryTimer) {
+      clearTimeout(this.qrExpiryTimer);
+      this.qrExpiryTimer = null;
+    }
     if (this.sock) {
       this.sock.end(undefined);
       this.sock = null;
@@ -314,7 +440,7 @@ export class ChatService {
     this.connectedAt = null;
     this.userJid = null;
     this.reconnectAttempts = 0;
-    this.logger.info('WhatsApp logged out');
+    this.logger.info('WhatsApp service stopped; authentication state preserved');
     emitToAll('connection-status', {
       state: 'close',
       timestamp: new Date().toISOString(),
@@ -328,6 +454,10 @@ export class ChatService {
       connectedAt: this.connectedAt,
       reconnectAttempts: this.reconnectAttempts,
       userJid: this.userJid,
+      initializing: this.initializingPromise !== null,
+      reconnectScheduled: this.reconnectTimer !== null,
+      watchdogRunning: this.watchdogTimer !== null,
+      sessionInvalid: this.sessionInvalid,
     };
   }
 
@@ -339,10 +469,6 @@ export class ChatService {
     return this.qr;
   }
 
-  /**
-   * Send a list message (dropdown menu) to a user.
-   * Falls back to plain text if unsupported.
-   */
   async sendListMessage(
     jid: string,
     params: {
@@ -359,10 +485,6 @@ export class ChatService {
     return sendInteractiveList(this.sock, jid, params);
   }
 
-  /**
-   * Send interactive reply buttons to a user.
-   * Falls back to plain text if unsupported.
-   */
   async sendButtonsMessage(
     jid: string,
     params: {

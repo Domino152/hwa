@@ -156,6 +156,19 @@ describe('Message Utility', () => {
       expect(result.content).toBe('intent:fees');
     });
 
+    it('extracts templateButtonReplyMessage content', () => {
+      const msg = {
+        message: {
+          templateButtonReplyMessage: {
+            selectedId: 'intent:announcements',
+          },
+        },
+      } as unknown as WAMessage;
+      const result = extractMessageContent(msg);
+      expect(result.type).toBe('text');
+      expect(result.content).toBe('intent:announcements');
+    });
+
     it('extracts interactiveResponseMessage with nativeFlowResponseMessage', () => {
       const msg = {
         message: {

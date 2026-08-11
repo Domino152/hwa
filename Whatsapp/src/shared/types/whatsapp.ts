@@ -22,6 +22,10 @@ export interface WhatsAppServiceStatus {
   connectedAt: string | null;
   reconnectAttempts: number;
   userJid: string | null;
+  initializing: boolean;
+  reconnectScheduled: boolean;
+  watchdogRunning: boolean;
+  sessionInvalid: boolean;
 }
 
 export interface ConversationListItem {

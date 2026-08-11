@@ -63,6 +63,7 @@ const envSchema = z
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
     WA_SESSION_DIR: z.string().default('./auth_info'),
+    WA_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1_000).default(30_000),
     JWT_SECRET: z
       .string()
       .min(32, 'JWT_SECRET must be at least 32 characters'),

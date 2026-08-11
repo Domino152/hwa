@@ -36,7 +36,7 @@ export interface IConversationModel extends Model<IConversation> {
   findByPhone(phone: string): Promise<IConversation | null>;
   findByJid(jid: string): Promise<IConversation | null>;
   findByStudentId(studentId: string): Promise<IConversation | null>;
-  addMessage(conversationId: string, message: IMessage): Promise<IConversation>;
+  addMessage(conversationId: string, message: IMessage): Promise<IConversation | null>;
   updateMessageStatus(conversationId: string, messageId: string, status: MessageStatus): Promise<IConversation>;
   getRecentMessages(conversationId: string, limit?: number): Promise<IMessage[]>;
   markAsRead(conversationId: string): Promise<IConversation>;
@@ -140,8 +140,8 @@ conversationSchema.statics.findByStudentId = function (studentId: string) {
 };
 
 conversationSchema.statics.addMessage = async function (conversationId: string, message: IMessage) {
-  return this.findByIdAndUpdate(
-    conversationId,
+  return this.findOneAndUpdate(
+    { _id: conversationId, 'messages.messageId': { $ne: message.messageId } },
     {
       $push: {
         messages: {

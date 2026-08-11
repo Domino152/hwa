@@ -19,6 +19,7 @@ describe('Config', () => {
     expect(result.NODE_ENV).toBe('development');
     expect(result.PORT).toBe(3000);
     expect(result.MONGO_URI).toBe('mongodb://localhost:27017/test');
+    expect(result.WA_WATCHDOG_INTERVAL_MS).toBe(30_000);
   });
 
   it('should fail with invalid PORT', () => {
