@@ -23,7 +23,6 @@ router.get(
 
 router.get(
   '/count',
-  authenticate,
   validate(studentQuerySchema, 'query'),
   asyncHandler(studentController.count),
 );
@@ -36,7 +35,6 @@ router.get(
 
 router.get(
   '/class/:department/:semester/:section',
-  authenticate,
   asyncHandler(studentController.getByClass),
 );
 
@@ -54,7 +52,6 @@ router.get(
 
 router.get(
   '/',
-  authenticate,
   validate(studentQuerySchema, 'query'),
   asyncHandler(studentController.list),
 );

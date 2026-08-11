@@ -10,6 +10,7 @@ import {
   bulkAttendanceSchema,
   dailyAttendanceSchema,
   bulkDailyAttendanceSchema,
+  dailyDateRangeQuerySchema,
 } from './attendance.schemas.js';
 
 const attendanceController = new AttendanceController(attendanceService);
@@ -20,7 +21,7 @@ const router = Router();
 
 router.get(
   '/daily/date-range',
-  authenticate,
+  validate(dailyDateRangeQuerySchema, 'query'),
   asyncHandler(attendanceController.getDailyByDateRange),
 );
 
@@ -57,7 +58,6 @@ router.post(
 
 router.post(
   '/daily/bulk',
-  authenticate,
   validate(bulkDailyAttendanceSchema),
   asyncHandler(attendanceController.markBulkDaily),
 );
