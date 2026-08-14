@@ -1,13 +1,13 @@
 import type { WAMessage } from 'baileys';
-import { Conversation, type IConversation, type IMessage } from '../../database/models/Conversation.js';
+import {
+  Conversation,
+  type IConversation,
+  type IMessage,
+  type MessageStatus,
+} from '../../database/models/Conversation.js';
 import { emitIncomingMessage } from '../../sockets/index.js';
 import { ChatService } from './chat.service.js';
-import { extractPhoneFromJid } from './utils/phone.js';
-import {
-  chatbotService,
-  buildHelpMenu,
-  type ChatbotResponse,
-} from '../../chatbot/index.js';
+import { chatbotService, buildHelpMenu, type ChatbotResponse } from '../../chatbot/index.js';
 import { integration } from '../../integration/index.js';
 import {
   shouldProcessMessage,
@@ -16,6 +16,7 @@ import {
   getMessageId,
 } from './utils/message.js';
 import logger from '../../shared/utils/logger.js';
+import { config } from '../../config/index.js';
 
 const autoReplyLogger = logger.child({ module: 'inbox' });
 
@@ -77,8 +78,9 @@ export class InboxService {
     try {
       if (!shouldProcessMessage(msg)) return;
 
-      const jid = msg.key.remoteJid as string;
-      const phone = extractPhoneFromJid(jid);
+      const identity = await this.chatService.resolveIncomingIdentity(msg);
+      const jid = identity.replyJid;
+      const phone = identity.identityKey;
       const { type, content } = extractMessageContent(msg);
       const timestamp = getMessageTimestamp(msg);
       const messageId = getMessageId(msg);
@@ -154,7 +156,7 @@ export class InboxService {
         );
       }
 
-      await this.sendAutoReply(conversation, jid, phone, content);
+      await this.sendAutoReply(conversation, jid, phone, identity.phone !== null, content);
     } catch (err) {
       autoReplyLogger.error({ err, msgKey: msg?.key }, 'Failed to handle incoming message');
     }
@@ -164,10 +166,15 @@ export class InboxService {
     conversation: IConversation | null,
     jid: string,
     phone: string,
+    phoneVerified: boolean,
     userMessage: string,
   ): Promise<void> {
     try {
-      const chatbotResult = await chatbotService.processMessage(userMessage, { phone, originalText: userMessage });
+      const chatbotResult = await chatbotService.processMessage(userMessage, {
+        phone,
+        phoneVerified,
+        originalText: userMessage,
+      });
       const requestId = `auto-reply-${Date.now()}`;
 
       autoReplyLogger.info(
@@ -176,13 +183,17 @@ export class InboxService {
       );
 
       // For greeting and help: send interactive list menu (single message, no text+buttons)
-      if (chatbotResult.intent === 'greeting' || chatbotResult.intent === 'help') {
+      if (
+        config.WA_INTERACTIVE_MESSAGES_ENABLED &&
+        (chatbotResult.intent === 'greeting' || chatbotResult.intent === 'help')
+      ) {
         await this.sendInteractiveMenu(conversation, jid, phone, chatbotResult, requestId);
         return;
       }
 
       // For other intents: send text response + optional suggested actions
-      const result = await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
+      const response = this.appendPlainTextActions(chatbotResult);
+      const result = await this.chatService.sendMessage(jid, response, requestId, phone);
 
       autoReplyLogger.info(
         { phone, messageId: result.messageId, intent: chatbotResult.intent },
@@ -190,7 +201,11 @@ export class InboxService {
       );
 
       // Send suggested quick-action buttons after the main reply
-      if (chatbotResult.suggestedActions && chatbotResult.suggestedActions.length > 0) {
+      if (
+        config.WA_INTERACTIVE_MESSAGES_ENABLED &&
+        chatbotResult.suggestedActions &&
+        chatbotResult.suggestedActions.length > 0
+      ) {
         try {
           await this.chatService.sendButtonsMessage(jid, {
             text: '_Quick Actions:_',
@@ -198,16 +213,27 @@ export class InboxService {
             buttons: chatbotResult.suggestedActions,
           });
         } catch (btnErr) {
-          autoReplyLogger.debug({ err: btnErr, phone }, 'Failed to send suggested actions (non-critical)');
+          autoReplyLogger.debug(
+            { err: btnErr, phone },
+            'Failed to send suggested actions (non-critical)',
+          );
         }
       }
-
     } catch (err) {
       autoReplyLogger.error(
         { err, phone },
         'Failed to send chatbot reply (incoming message still saved)',
       );
     }
+  }
+
+  private appendPlainTextActions(chatbotResult: ChatbotResponse): string {
+    if (!chatbotResult.suggestedActions?.length) return chatbotResult.response;
+    const actions = chatbotResult.suggestedActions
+      .map((action) => action.text.replace(/^\p{Extended_Pictographic}\s*/u, '').trim())
+      .filter(Boolean);
+    if (actions.length === 0) return chatbotResult.response;
+    return `${chatbotResult.response}\n\nYou can type: ${actions.join(', ')}`;
   }
 
   /**
@@ -225,19 +251,20 @@ export class InboxService {
     try {
       // For greeting: send the personalized text first
       if (chatbotResult.intent === 'greeting') {
-        await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
+        await this.chatService.sendMessage(jid, chatbotResult.response, requestId, phone);
       }
 
       // Send the interactive list menu
       let userData = null;
       try {
-        userData = await integration.findUserByPhone(phone);
+        if (!phone.startsWith('lid:')) userData = await integration.findUserByPhone(phone);
       } catch (err) {
         autoReplyLogger.warn({ err, phone }, 'User lookup failed; sending public menu');
       }
       const menu = buildHelpMenu(!!userData);
 
       const listResult = await this.chatService.sendListMessage(jid, menu);
+      if (!listResult) throw new Error('Interactive messages are disabled or unsupported');
 
       autoReplyLogger.info(
         { phone, intent: chatbotResult.intent, messageId: listResult },
@@ -251,7 +278,7 @@ export class InboxService {
           direction: 'outgoing',
           type: 'text',
           content: `[Interactive Menu: ${chatbotResult.intent}]`,
-          status: 'sent',
+          status: 'pending',
           timestamp: new Date(),
           fromMe: true,
           pushName: null,
@@ -266,7 +293,7 @@ export class InboxService {
 
       // Fallback: send text response
       try {
-        await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
+        await this.chatService.sendMessage(jid, chatbotResult.response, requestId, phone);
       } catch (fallbackErr) {
         autoReplyLogger.error({ err: fallbackErr, phone }, 'Fallback text reply also failed');
       }
@@ -292,6 +319,7 @@ export class InboxService {
     direction: 'incoming' | 'outgoing';
     timestamp: Date;
   }): Promise<IConversation> {
+    await this.reconcileConversationIdentity(params.phone, params.jid);
     const update: Record<string, unknown> = {
       $set: {
         jid: params.jid,
@@ -302,27 +330,39 @@ export class InboxService {
       },
     };
 
-    const conversation = await Conversation.findOneAndUpdate(
-      { phone: params.phone },
-      update,
-      { new: true, upsert: true, setDefaultsOnInsert: true },
-    );
+    const conversation = await Conversation.findOneAndUpdate({ phone: params.phone }, update, {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+    });
 
     return conversation as IConversation;
   }
 
-  async getConversations(
-    page: number,
-    limit: number,
-  ): Promise<ConversationListResult> {
+  private async reconcileConversationIdentity(phone: string, jid: string): Promise<void> {
+    if (!jid.endsWith('@lid') || phone.startsWith('lid:')) return;
+
+    const [canonical, legacy] = await Promise.all([
+      Conversation.findOne({ phone }),
+      Conversation.findOne({ jid }),
+    ]);
+
+    if (legacy && (!canonical || String(canonical._id) === String(legacy._id))) {
+      await Conversation.updateOne({ _id: legacy._id }, { $set: { phone, jid, isActive: true } });
+      return;
+    }
+
+    if (canonical && legacy && String(canonical._id) !== String(legacy._id)) {
+      await Conversation.updateOne({ _id: legacy._id }, { $set: { isActive: false } });
+      await Conversation.updateOne({ _id: canonical._id }, { $set: { jid } });
+    }
+  }
+
+  async getConversations(page: number, limit: number): Promise<ConversationListResult> {
     const skip = (page - 1) * limit;
 
     const [conversations, total] = await Promise.all([
-      Conversation.find()
-        .sort({ lastMessageAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
+      Conversation.find().sort({ lastMessageAt: -1 }).skip(skip).limit(limit).lean(),
       Conversation.countDocuments(),
     ]);
 
@@ -343,22 +383,17 @@ export class InboxService {
     };
   }
 
-  async getMessages(
-    phone: string,
-    page: number,
-    limit: number,
-  ): Promise<MessageListResult> {
+  async getMessages(phone: string, page: number, limit: number): Promise<MessageListResult> {
     const skip = (page - 1) * limit;
 
-    const conversation = await Conversation.findOne({ phone })
-      .select('messages phone')
-      .lean();
+    const conversation = await Conversation.findOne({ phone }).select('messages phone').lean();
     if (!conversation) {
       return { messages: [], total: 0, page, limit };
     }
 
-    const allMessages = (conversation.messages || [])
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const allMessages = (conversation.messages || []).sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
 
     const total = allMessages.length;
     const paginatedMessages = allMessages.slice(skip, skip + limit);
@@ -409,7 +444,7 @@ export class InboxService {
     messageId: string;
     content: string;
     type: 'text' | 'image' | 'video' | 'document' | 'audio' | 'other';
-    status: 'sent' | 'failed';
+    status: 'pending' | 'sent' | 'failed';
     timestamp: Date;
     requestId?: string;
     error?: string;
@@ -442,5 +477,27 @@ export class InboxService {
       );
       return null;
     }
+  }
+
+  async updateOutgoingMessageStatus(messageId: string, status: MessageStatus): Promise<void> {
+    const rank: Record<MessageStatus, number> = {
+      received: 0,
+      pending: 1,
+      sent: 2,
+      delivered: 3,
+      read: 4,
+      failed: 0,
+    };
+    const conversation = await Conversation.findOne({ 'messages.messageId': messageId });
+    if (!conversation) return;
+    const message = conversation.messages.find((item) => item.messageId === messageId);
+    if (!message || message.direction !== 'outgoing') return;
+    if (message.status === 'failed') return;
+    if (status === 'failed') {
+      if (message.status !== 'pending' && message.status !== 'sent') return;
+    } else if (rank[status] <= rank[message.status]) {
+      return;
+    }
+    await Conversation.updateMessageStatus(String(conversation._id), messageId, status);
   }
 }

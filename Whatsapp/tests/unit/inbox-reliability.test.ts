@@ -17,7 +17,10 @@ vi.mock('../../src/database/models/Conversation.js', () => ({
 vi.mock('../../src/chatbot/index.js', () => ({
   chatbotService: { processMessage: mocks.processMessage },
   buildHelpMenu: vi.fn(() => ({
-    title: 'Menu', description: 'Choose', buttonText: 'Open', sections: [],
+    title: 'Menu',
+    description: 'Choose',
+    buttonText: 'Open',
+    sections: [],
   })),
 }));
 
@@ -44,27 +47,65 @@ describe('Inbox reliability', () => {
   const sendMessage = vi.fn();
   const sendButtonsMessage = vi.fn();
   const sendListMessage = vi.fn();
-  const chatService = { sendMessage, sendButtonsMessage, sendListMessage } as unknown as ChatService;
+  const resolveIncomingIdentity = vi.fn();
+  const chatService = {
+    sendMessage,
+    sendButtonsMessage,
+    sendListMessage,
+    resolveIncomingIdentity,
+  } as unknown as ChatService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.findOneAndUpdate.mockResolvedValue({
-      _id: 'conversation-id', unreadCount: 0, messages: [],
+      _id: 'conversation-id',
+      unreadCount: 0,
+      messages: [],
     });
     mocks.addMessage.mockResolvedValue({
-      _id: 'conversation-id', unreadCount: 1,
+      _id: 'conversation-id',
+      unreadCount: 1,
       messages: [{ messageId: 'message-id' }],
     });
     mocks.processMessage.mockResolvedValue({
-      intent: 'fees', response: 'Fee response', suggestedActions: [],
+      intent: 'fees',
+      response: 'Fee response',
+      suggestedActions: [],
     });
     sendMessage.mockResolvedValue({ messageId: 'reply-id' });
+    resolveIncomingIdentity.mockImplementation(async (message: WAMessage) => ({
+      replyJid: message.key.remoteJid,
+      phone: '919999999999',
+      identityKey: '919999999999',
+      pnJid: message.key.remoteJid,
+      lidJid: null,
+    }));
   });
 
   it('responds to a normal incoming message', async () => {
     const service = new InboxService(chatService);
     await service.handleIncomingMessage(incoming('normal-1'));
     expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders greeting actions as typeable plain text by default', async () => {
+    mocks.processMessage.mockResolvedValueOnce({
+      intent: 'greeting',
+      response: 'Welcome',
+      suggestedActions: [{ id: 'intent:help', text: 'Help' }],
+    });
+    const service = new InboxService(chatService);
+
+    await service.handleIncomingMessage(incoming('plain-menu-1', 'hi'));
+
+    expect(sendListMessage).not.toHaveBeenCalled();
+    expect(sendButtonsMessage).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      '919999999999@s.whatsapp.net',
+      'Welcome\n\nYou can type: Help',
+      expect.stringMatching(/^auto-reply-/),
+      '919999999999',
+    );
   });
 
   it('continues replying when MongoDB persistence fails', async () => {
@@ -75,6 +116,29 @@ describe('Inbox reliability', () => {
       '919999999999@s.whatsapp.net',
       'Fee response',
       expect.stringMatching(/^auto-reply-/),
+      '919999999999',
+    );
+  });
+
+  it('uses the verified PN identity while replying to an LID address', async () => {
+    resolveIncomingIdentity.mockResolvedValueOnce({
+      replyJid: '155212148928716@lid',
+      phone: '919999999999',
+      identityKey: '919999999999',
+      pnJid: '919999999999@s.whatsapp.net',
+      lidJid: '155212148928716@lid',
+    });
+    const service = new InboxService(chatService);
+    await service.handleIncomingMessage(incoming('lid-1'));
+    expect(mocks.processMessage).toHaveBeenCalledWith(
+      'fees',
+      expect.objectContaining({ phone: '919999999999', phoneVerified: true }),
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      '155212148928716@lid',
+      'Fee response',
+      expect.stringMatching(/^auto-reply-/),
+      '919999999999',
     );
   });
 

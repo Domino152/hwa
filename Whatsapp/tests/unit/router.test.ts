@@ -318,6 +318,16 @@ describe('MessageRouter', () => {
       expect(result.response).not.toContain('?phone=');
     });
 
+    it('does not create a login token for an unresolved LID identity', async () => {
+      const result = await router.route('intent:attendance', {
+        phone: 'lid:155212148928716',
+        phoneVerified: false,
+      });
+      expect(result.response).toContain('Phone verification required');
+      expect(integration.findUserByPhone).not.toHaveBeenCalled();
+      expect(authService.generateLoginToken).not.toHaveBeenCalled();
+    });
+
     it('does not reveal student name for unauthenticated user', async () => {
       vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
       const result = await router.route('Hi', { phone: 'unauth-4' });
@@ -328,7 +338,13 @@ describe('MessageRouter', () => {
     it('blocks all private intents when unauthenticated', async () => {
       vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
 
-      const privateIntents = ['intent:attendance', 'intent:fees', 'intent:schedule', 'intent:results', 'intent:profile'];
+      const privateIntents = [
+        'intent:attendance',
+        'intent:fees',
+        'intent:schedule',
+        'intent:results',
+        'intent:profile',
+      ];
       for (const action of privateIntents) {
         const result = await router.route(action, { phone: 'unauth-5' });
         expect(result.response).toContain('Authentication Required');
@@ -338,7 +354,9 @@ describe('MessageRouter', () => {
     it('does not invoke Gemini for unauthenticated natural-language queries', async () => {
       const { GeminiOrchestrator } = await import('../../src/chatbot/ai/gemini-orchestrator.js');
       const mockProcess = vi.fn();
-      vi.mocked(GeminiOrchestrator).mockImplementation(() => ({ processMessage: mockProcess }) as never);
+      vi.mocked(GeminiOrchestrator).mockImplementation(
+        () => ({ processMessage: mockProcess }) as never,
+      );
 
       const router2 = new MessageRouter();
       vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
@@ -352,8 +370,13 @@ describe('MessageRouter', () => {
       const phone = '919999999999';
 
       vi.mocked(integration.findUserByPhone).mockResolvedValue({
-        id: 'u1', fullName: 'Test', role: 'student', studentId: '22CSE001',
-        department: 'CSE', year: 4, section: 'A',
+        id: 'u1',
+        fullName: 'Test',
+        role: 'student',
+        studentId: '22CSE001',
+        department: 'CSE',
+        year: 4,
+        section: 'A',
       });
       const r1 = await router.route('intent:attendance', { phone });
       expect(r1.response).toContain('Attendance');

@@ -3,6 +3,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   makeCacheableSignalKeyStore,
   Browsers,
+  WAMessageStatus,
   type WAMessage,
   type WAMessageContent,
   type WAMessageKey,
@@ -11,11 +12,14 @@ import makeWASocket, {
 import type pino from 'pino';
 import { Boom } from '@hapi/boom';
 import NodeCache from '@cacheable/node-cache';
+import { rm } from 'node:fs/promises';
 import { config } from '../../config/index.js';
 import { emitToAll } from '../../sockets/index.js';
 import logger from '../../shared/utils/logger.js';
 import { ServiceUnavailableError } from '../../shared/utils/errors.js';
 import { extractPhoneFromJid } from './utils/phone.js';
+import { resolveInboundIdentity, type InboundIdentity } from './utils/identity.js';
+import { useMongoAuthState } from './mongo-auth-state.js';
 import { InboxService } from './inbox.service.js';
 import { Conversation } from '../../database/models/Conversation.js';
 import type { WhatsAppServiceStatus } from '../../shared/types/whatsapp.js';
@@ -28,6 +32,7 @@ import {
 } from '../../chatbot/interactive.js';
 
 type ConnectionStateStr = 'connecting' | 'open' | 'close';
+type OutgoingDeliveryStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 const QR_TIMEOUT_MS = 60_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -56,15 +61,15 @@ export class ChatService {
   private invalidSessionQrAttempted = false;
   private connectingSince = 0;
   private watchdogHealthyLogged = false;
+  private readonly lidToPn = new Map<string, string>();
+  private readonly deliveryUpdates = new Map<string, OutgoingDeliveryStatus>();
+  private clearAuthState: (() => Promise<void>) | null = null;
 
   constructor(sessionDir?: string, watchdogIntervalMs?: number) {
     this.sessionDir = sessionDir ?? config.WA_SESSION_DIR;
     this.watchdogIntervalMs = watchdogIntervalMs ?? config.WA_WATCHDOG_INTERVAL_MS;
     this.logger = logger.child({ module: 'whatsapp' });
-    this.baileysLogger = logger.child(
-      { module: 'whatsapp-baileys' },
-      { level: 'warn' },
-    );
+    this.baileysLogger = logger.child({ module: 'whatsapp-baileys' }, { level: 'warn' });
   }
 
   setInboxService(inbox: InboxService): void {
@@ -109,10 +114,27 @@ export class ChatService {
     const oldSocket = this.sock;
     this.sock = null;
     if (oldSocket) {
-      try { oldSocket.end(undefined); } catch { /* already closed */ }
+      try {
+        oldSocket.end(undefined);
+      } catch {
+        /* already closed */
+      }
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState(this.sessionDir);
+    let state: Awaited<ReturnType<typeof useMultiFileAuthState>>['state'];
+    let saveCreds: () => Promise<void>;
+    if (config.WA_AUTH_STORE === 'mongodb') {
+      const mongoAuth = await useMongoAuthState(
+        config.WA_SESSION_ID,
+        config.WA_AUTH_ENCRYPTION_KEY!,
+      );
+      ({ state, saveCreds } = mongoAuth);
+      this.clearAuthState = mongoAuth.clear;
+    } else {
+      const filesystemAuth = await useMultiFileAuthState(this.sessionDir);
+      ({ state, saveCreds } = filesystemAuth);
+      this.clearAuthState = () => rm(this.sessionDir, { recursive: true, force: true });
+    }
     this.logger.info({ registered: state.creds.registered }, 'WhatsApp session loaded');
 
     const socket = makeWASocket({
@@ -128,7 +150,8 @@ export class ChatService {
       syncFullHistory: false,
       fireInitQueries: false,
       shouldSyncHistoryMessage: () => false,
-      getMessage: (_key: WAMessageKey): Promise<WAMessageContent | undefined> => Promise.resolve(undefined),
+      getMessage: (_key: WAMessageKey): Promise<WAMessageContent | undefined> =>
+        Promise.resolve(undefined),
     });
 
     this.sock = socket;
@@ -161,11 +184,64 @@ export class ChatService {
         });
       }
     });
+
+    socket.ev.on('lid-mapping.update', ({ lid, pn }) => {
+      if (this.sock !== socket) return;
+      this.lidToPn.set(lid, pn);
+      this.logger.debug({ lid }, 'LID mapping cached');
+    });
+
+    socket.ev.on('messages.update', (updates) => {
+      if (this.sock !== socket || !this.inbox) return;
+      for (const { key, update } of updates) {
+        if (!key.id || update.status === undefined || update.status === null) continue;
+        const status = this.mapMessageStatus(update.status);
+        if (status) this.trackDeliveryUpdate(key.id, status);
+      }
+    });
+
+    socket.ev.on('message-receipt.update', (updates) => {
+      if (this.sock !== socket || !this.inbox) return;
+      for (const { key, receipt } of updates) {
+        if (!key.id) continue;
+        const status = receipt.readTimestamp || receipt.playedTimestamp ? 'read' : 'delivered';
+        this.trackDeliveryUpdate(key.id, status);
+      }
+    });
   }
 
-  private handleConnectionUpdate(
-    update: { connection?: string; lastDisconnect?: { error?: Boom | Error }; qr?: string },
-  ): void {
+  private mapMessageStatus(status: number): OutgoingDeliveryStatus | null {
+    switch (status) {
+      case WAMessageStatus.ERROR:
+        return 'failed';
+      case WAMessageStatus.PENDING:
+        return 'pending';
+      case WAMessageStatus.SERVER_ACK:
+        return 'sent';
+      case WAMessageStatus.DELIVERY_ACK:
+        return 'delivered';
+      case WAMessageStatus.READ:
+      case WAMessageStatus.PLAYED:
+        return 'read';
+      default:
+        return null;
+    }
+  }
+
+  private trackDeliveryUpdate(messageId: string, status: OutgoingDeliveryStatus): void {
+    this.deliveryUpdates.set(messageId, status);
+    if (this.deliveryUpdates.size > 1_000) {
+      const oldest = this.deliveryUpdates.keys().next().value;
+      if (oldest) this.deliveryUpdates.delete(oldest);
+    }
+    void this.inbox?.updateOutgoingMessageStatus(messageId, status);
+  }
+
+  private handleConnectionUpdate(update: {
+    connection?: string;
+    lastDisconnect?: { error?: Boom | Error };
+    qr?: string;
+  }): void {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
@@ -189,16 +265,19 @@ export class ChatService {
 
     if (connection === 'close') {
       const error = lastDisconnect?.error;
-      const statusCode = error && 'output' in error
-        ? (error as Boom).output?.statusCode
-        : undefined;
+      const statusCode =
+        error && 'output' in error ? (error as Boom).output?.statusCode : undefined;
 
       this.logger.warn({ statusCode }, 'Connection closed');
       this.state = 'close';
       this.connectedAt = null;
       this.userJid = null;
       if (this.sock) {
-        try { this.sock.end(undefined); } catch { /* already closed */ }
+        try {
+          this.sock.end(undefined);
+        } catch {
+          /* already closed */
+        }
         this.sock = null;
       }
 
@@ -214,10 +293,7 @@ export class ChatService {
           state: 'close',
           timestamp: new Date().toISOString(),
         });
-        if (
-          statusCode === DisconnectReason.loggedOut
-          && !this.invalidSessionQrAttempted
-        ) {
+        if (statusCode === DisconnectReason.loggedOut && !this.invalidSessionQrAttempted) {
           this.invalidSessionQrAttempted = true;
           void this.initialize().catch((err) => {
             this.logger.error({ err }, 'Unable to create QR socket for invalid session');
@@ -261,11 +337,13 @@ export class ChatService {
 
     this.reconnectAttempts++;
     const exponent = Math.min(this.reconnectAttempts - 1, 10);
-    const delay = delayOverride ?? Math.min(
-      RECONNECT_BASE_DELAY_MS * Math.pow(2, exponent),
-      RECONNECT_MAX_DELAY_MS,
+    const delay =
+      delayOverride ??
+      Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, exponent), RECONNECT_MAX_DELAY_MS);
+    this.logger.info(
+      { attempt: this.reconnectAttempts, delayMs: delay },
+      'WhatsApp reconnect scheduled',
     );
-    this.logger.info({ attempt: this.reconnectAttempts, delayMs: delay }, 'WhatsApp reconnect scheduled');
     emitToAll('connection-status', {
       state: 'connecting',
       timestamp: new Date().toISOString(),
@@ -300,14 +378,14 @@ export class ChatService {
     if (this.initializingPromise || this.reconnectTimer) return;
     if (this.state === 'connecting' && this.qr) return;
 
-    const connectingTooLong = this.state === 'connecting'
-      && Date.now() - this.connectingSince >= Math.max(
-        CONNECTING_STALE_MIN_MS,
-        this.watchdogIntervalMs * 2,
-      );
-    const stale = this.state === 'close'
-      || (this.state === 'open' && !this.sock?.ws.isOpen)
-      || connectingTooLong;
+    const connectingTooLong =
+      this.state === 'connecting' &&
+      Date.now() - this.connectingSince >=
+        Math.max(CONNECTING_STALE_MIN_MS, this.watchdogIntervalMs * 2);
+    const stale =
+      this.state === 'close' ||
+      (this.state === 'open' && !this.sock?.ws.isOpen) ||
+      connectingTooLong;
     if (!stale) return;
 
     this.watchdogHealthyLogged = false;
@@ -316,7 +394,11 @@ export class ChatService {
       'WhatsApp watchdog detected stale connection',
     );
     if (this.sock) {
-      try { this.sock.end(undefined); } catch { /* already closed */ }
+      try {
+        this.sock.end(undefined);
+      } catch {
+        /* already closed */
+      }
       this.sock = null;
     }
     this.state = 'close';
@@ -333,18 +415,19 @@ export class ChatService {
     jid: string,
     text: string,
     requestId: string,
+    identityKey: string = extractPhoneFromJid(jid),
   ): Promise<{ messageId: string }> {
     if (!this.sock || this.state !== 'open') {
       throw new ServiceUnavailableError('WhatsApp not connected');
     }
 
-    const phone = extractPhoneFromJid(jid);
+    const phone = identityKey;
     const timestamp = new Date();
 
     try {
-      const result = await this.sock.sendMessage(jid, { text });
+      const result = await this.sock.sendMessage(jid, { text, linkPreview: null });
       const messageId = result?.key?.id ?? 'unknown';
-      this.logger.info({ jid, messageId, requestId }, 'Message sent');
+      this.logger.info({ jid, messageId, requestId }, 'Message queued for WhatsApp');
       await this.persistOutgoingMessage({ phone, jid, text, timestamp, messageId, requestId });
       return { messageId };
     } catch (err) {
@@ -392,19 +475,29 @@ export class ChatService {
         params.text,
         params.timestamp,
       );
-      await this.inbox.recordOutgoingMessage({
+      const persisted = await this.inbox.recordOutgoingMessage({
         conversationId: conversation._id,
         phone: params.phone,
         jid: params.jid,
         messageId: params.messageId,
         content: params.text,
         type: 'text',
-        status: 'sent',
+        status: 'pending',
         timestamp: params.timestamp,
         requestId: params.requestId,
       });
+      const observedStatus = this.deliveryUpdates.get(params.messageId);
+      if (persisted && observedStatus) {
+        await this.inbox.updateOutgoingMessageStatus(params.messageId, observedStatus);
+        if (observedStatus === 'read' || observedStatus === 'failed') {
+          this.deliveryUpdates.delete(params.messageId);
+        }
+      }
     } catch (err) {
-      this.logger.error({ err, messageId: params.messageId }, 'Message sent but persistence failed');
+      this.logger.error(
+        { err, messageId: params.messageId },
+        'Message sent but persistence failed',
+      );
     }
   }
 
@@ -415,9 +508,29 @@ export class ChatService {
     });
   }
 
-  logout(): Promise<void> {
-    this.shutdown();
-    return Promise.resolve();
+  async resolveIncomingIdentity(msg: WAMessage): Promise<InboundIdentity> {
+    return resolveInboundIdentity(msg, async (lid) => {
+      const cached = this.lidToPn.get(lid);
+      if (cached) return cached;
+      const mapped = await this.sock?.signalRepository.lidMapping.getPNForLID(lid);
+      if (mapped) this.lidToPn.set(lid, mapped);
+      return mapped ?? null;
+    });
+  }
+
+  async logout(): Promise<void> {
+    this.shutdownRequested = true;
+    const socket = this.sock;
+    try {
+      await socket?.logout();
+    } finally {
+      this.shutdown();
+      await this.clearAuthState?.();
+      this.clearAuthState = null;
+      this.lidToPn.clear();
+      this.deliveryUpdates.clear();
+      this.logger.info('WhatsApp authentication state cleared');
+    }
   }
 
   shutdown(): void {
@@ -479,6 +592,7 @@ export class ChatService {
       sections: ListSection[];
     },
   ): Promise<string | null> {
+    if (!config.WA_INTERACTIVE_MESSAGES_ENABLED) return null;
     if (!this.sock || this.state !== 'open') {
       throw new ServiceUnavailableError('WhatsApp not connected');
     }
@@ -493,6 +607,7 @@ export class ChatService {
       buttons: ButtonOption[];
     },
   ): Promise<string | null> {
+    if (!config.WA_INTERACTIVE_MESSAGES_ENABLED) return null;
     if (!this.sock || this.state !== 'open') {
       throw new ServiceUnavailableError('WhatsApp not connected');
     }

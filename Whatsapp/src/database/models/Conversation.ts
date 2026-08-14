@@ -2,7 +2,7 @@
 
 export type MessageDirection = 'incoming' | 'outgoing';
 export type MessageType = 'text' | 'image' | 'video' | 'document' | 'audio' | 'other';
-export type MessageStatus = 'received' | 'sent' | 'delivered' | 'read' | 'failed';
+export type MessageStatus = 'received' | 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface IMessage {
   messageId: string;
@@ -37,7 +37,11 @@ export interface IConversationModel extends Model<IConversation> {
   findByJid(jid: string): Promise<IConversation | null>;
   findByStudentId(studentId: string): Promise<IConversation | null>;
   addMessage(conversationId: string, message: IMessage): Promise<IConversation | null>;
-  updateMessageStatus(conversationId: string, messageId: string, status: MessageStatus): Promise<IConversation>;
+  updateMessageStatus(
+    conversationId: string,
+    messageId: string,
+    status: MessageStatus,
+  ): Promise<IConversation>;
   getRecentMessages(conversationId: string, limit?: number): Promise<IMessage[]>;
   markAsRead(conversationId: string): Promise<IConversation>;
 }
@@ -58,7 +62,7 @@ const messageSchema = new Schema<IMessage>(
     content: { type: String, required: true },
     status: {
       type: String,
-      enum: ['received', 'sent', 'delivered', 'read', 'failed'],
+      enum: ['received', 'pending', 'sent', 'delivered', 'read', 'failed'],
       default: 'received',
     },
     timestamp: { type: Date, required: true },
@@ -174,7 +178,10 @@ conversationSchema.statics.updateMessageStatus = async function (
   ).exec();
 };
 
-conversationSchema.statics.getRecentMessages = function (conversationId: string, limit: number = 50) {
+conversationSchema.statics.getRecentMessages = function (
+  conversationId: string,
+  limit: number = 50,
+) {
   return this.findById(conversationId)
     .select('messages')
     .then((doc) => {
@@ -185,11 +192,10 @@ conversationSchema.statics.getRecentMessages = function (conversationId: string,
 };
 
 conversationSchema.statics.markAsRead = async function (conversationId: string) {
-  return this.findByIdAndUpdate(
-    conversationId,
-    { unreadCount: 0 },
-    { new: true },
-  ).exec();
+  return this.findByIdAndUpdate(conversationId, { unreadCount: 0 }, { new: true }).exec();
 };
 
-export const Conversation = mongoose.model<IConversation, IConversationModel>('Conversation', conversationSchema);
+export const Conversation = mongoose.model<IConversation, IConversationModel>(
+  'Conversation',
+  conversationSchema,
+);

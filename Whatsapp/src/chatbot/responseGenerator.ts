@@ -1,4 +1,9 @@
-import { IntentName, PRIVATE_INTENTS, type ChatbotContext, type AuthenticatedUserInfo } from './intents.js';
+import {
+  IntentName,
+  PRIVATE_INTENTS,
+  type ChatbotContext,
+  type AuthenticatedUserInfo,
+} from './intents.js';
 import { config } from '../config/index.js';
 import { integration } from '../integration/index.js';
 import { authService } from '../modules/auth/index.js';
@@ -14,18 +19,14 @@ import {
   greetingCard,
   helpCard,
   loginRequiredCard,
+  phoneIdentityUnavailableCard,
   logoutCard,
   unknownIntentCard,
   card,
   sectionHeader,
   bulletItem,
 } from './formatter.js';
-import {
-  getSession,
-  markGreetingSent,
-  clearSession,
-  type ChatSession,
-} from './sessionManager.js';
+import { getSession, markGreetingSent, clearSession, type ChatSession } from './sessionManager.js';
 import type { ClassificationResult } from './intentClassifier.js';
 
 export interface GenerateOptions {
@@ -50,6 +51,15 @@ export async function generateResponse(
   classification?: ClassificationResult,
 ): Promise<string> {
   const session = getSession(context.phone);
+
+  if (
+    context.phoneVerified === false &&
+    (PRIVATE_INTENTS.includes(intent) ||
+      intent === IntentName.Login ||
+      intent === IntentName.Logout)
+  ) {
+    return phoneIdentityUnavailableCard();
+  }
 
   if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
     return loginRequiredCard(await getLoginUrl(context.phone));
@@ -157,8 +167,8 @@ async function handleAttendance(
   // If subject was mentioned, filter for that subject
   if (classification?.extractedSubject) {
     const subject = classification.extractedSubject;
-    const record = data.records.find(
-      (r) => r.subject.toLowerCase().includes(subject.toLowerCase()),
+    const record = data.records.find((r) =>
+      r.subject.toLowerCase().includes(subject.toLowerCase()),
     );
 
     if (record) {
@@ -173,8 +183,8 @@ async function handleAttendance(
           record.percentage >= 85
             ? 'Great attendance!'
             : record.percentage >= 75
-            ? 'Needs improvement'
-            : 'Warning: Low attendance!'
+              ? 'Needs improvement'
+              : 'Warning: Low attendance!'
         }`,
       ].join('\n');
     }
@@ -196,11 +206,7 @@ async function handleFees(studentId: string): Promise<string> {
   const data = await integration.fees.getByStudentId(studentId);
 
   if (!data.hasData || !data.fee) {
-    return card('💰 Fees', [
-      'No fee records found.',
-      '',
-      'Please contact your administrator.',
-    ]);
+    return card('💰 Fees', ['No fee records found.', '', 'Please contact your administrator.']);
   }
 
   return feesCard(data.fee);
@@ -236,11 +242,7 @@ async function handleResults(studentId: string): Promise<string> {
   const data = await integration.results.getByStudentId(studentId);
 
   if (!data.hasData) {
-    return card('📝 Results', [
-      'No results found.',
-      '',
-      'Please contact your administrator.',
-    ]);
+    return card('📝 Results', ['No results found.', '', 'Please contact your administrator.']);
   }
 
   return resultsCard(data.results, data.cgpa);
@@ -250,11 +252,7 @@ async function handleProfile(studentId: string): Promise<string> {
   const profile = await integration.getStudentProfile(studentId);
 
   if (!profile.hasData) {
-    return card('👤 Profile', [
-      'Profile not found.',
-      '',
-      'Please contact your administrator.',
-    ]);
+    return card('👤 Profile', ['Profile not found.', '', 'Please contact your administrator.']);
   }
 
   return profileCard(profile.student);
@@ -264,11 +262,7 @@ async function handleAnnouncements(): Promise<string> {
   const result = await integration.publicInformation.getByCategory('events' as KnowledgeCategory);
 
   if (!result.hasData) {
-    return card('📢 Announcements', [
-      'No new announcements.',
-      '',
-      'Check back later for updates.',
-    ]);
+    return card('📢 Announcements', ['No new announcements.', '', 'Check back later for updates.']);
   }
 
   const announcements = result.entries.map((e) => ({
@@ -354,28 +348,18 @@ function formatCategoryContent(result: {
   entries: { title: string; content: string }[];
   category: string;
 }): string {
-  const categoryTitle = result.category
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const categoryTitle = result.category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
   if (result.entries.length === 1) {
     const entry = result.entries[0]!;
-    return [
-      sectionHeader(entry.title, 'ℹ️'),
-      '',
-      entry.content,
-    ].join('\n');
+    return [sectionHeader(entry.title, 'ℹ️'), '', entry.content].join('\n');
   }
 
   const lines = result.entries.map(
     (e) => `${bulletItem(`${e.title}: ${e.content.substring(0, 150)}`)}`,
   );
 
-  return [
-    sectionHeader(categoryTitle, 'ℹ️'),
-    '',
-    ...lines,
-  ].join('\n');
+  return [sectionHeader(categoryTitle, 'ℹ️'), '', ...lines].join('\n');
 }
 
 function formatSearchResults(result: {
@@ -385,11 +369,7 @@ function formatSearchResults(result: {
     (e, i) => `${i + 1}. *${e.title}*\n   ${e.content.substring(0, 120)}...`,
   );
 
-  return [
-    sectionHeader('🔍 Search Results', '🔍'),
-    '',
-    ...lines,
-  ].join('\n');
+  return [sectionHeader('🔍 Search Results', '🔍'), '', ...lines].join('\n');
 }
 
 function getDayName(d: Date): string {

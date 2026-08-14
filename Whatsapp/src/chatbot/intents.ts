@@ -19,11 +19,7 @@ export interface IntentDefinition {
   patterns: string[];
 }
 
-export const SUBJECTS = [
-  'DBMS',
-  'Java',
-  'Operating Systems',
-] as const;
+export const SUBJECTS = ['DBMS', 'Java', 'Operating Systems'] as const;
 
 /** Intents that require the user to be authenticated. */
 export const PRIVATE_INTENTS: IntentName[] = [
@@ -41,48 +37,27 @@ export const PRIVATE_INTENTS: IntentName[] = [
 export const INTENT_DEFINITIONS: IntentDefinition[] = [
   {
     name: IntentName.Attendance,
-    patterns: [
-      'attendance',
-    ],
+    patterns: ['attendance'],
   },
   {
     name: IntentName.Fees,
-    patterns: [
-      'fees',
-      'fee',
-    ],
+    patterns: ['fees', 'fee'],
   },
   {
     name: IntentName.Schedule,
-    patterns: [
-      'schedule',
-      'timetable',
-      'classes',
-    ],
+    patterns: ['schedule', 'timetable', 'classes'],
   },
   {
     name: IntentName.Results,
-    patterns: [
-      'result',
-      'results',
-      'marks',
-      'grade',
-      'grades',
-      'cgpa',
-    ],
+    patterns: ['result', 'results', 'marks', 'grade', 'grades', 'cgpa'],
   },
   {
     name: IntentName.Syllabus,
-    patterns: [
-      'syllabus',
-    ],
+    patterns: ['syllabus'],
   },
   {
     name: IntentName.Announcements,
-    patterns: [
-      'announcement',
-      'announcements',
-    ],
+    patterns: ['announcement', 'announcements'],
   },
   {
     name: IntentName.PublicInformation,
@@ -169,14 +144,7 @@ export const INTENT_DEFINITIONS: IntentDefinition[] = [
   },
   {
     name: IntentName.Help,
-    patterns: [
-      'what can you do',
-      'what do you do',
-      'commands',
-      'options',
-      'menu',
-      'help',
-    ],
+    patterns: ['what can you do', 'what do you do', 'commands', 'options', 'menu', 'help'],
   },
 ];
 
@@ -189,6 +157,7 @@ export interface AuthenticatedUserInfo {
 
 export interface ChatbotContext {
   phone: string;
+  phoneVerified?: boolean;
   isAuthenticated: boolean;
   originalText: string;
   user?: AuthenticatedUserInfo;

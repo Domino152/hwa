@@ -2,17 +2,10 @@ import type { ChatbotContext } from './intents.js';
 import { IntentName, PRIVATE_INTENTS } from './intents.js';
 import { classifyIntentNLP, type ClassificationResult } from './intentClassifier.js';
 import { generateResponse, getLoginUrl } from './responseGenerator.js';
-import {
-  GeminiOrchestrator,
-  type GeminiClassification,
-} from './ai/gemini-orchestrator.js';
+import { GeminiOrchestrator, type GeminiClassification } from './ai/gemini-orchestrator.js';
 import { ToolExecutor, type ToolName } from './tools/tool-executor.js';
 import { integration } from '../integration/index.js';
-import {
-  addHistoryEntry,
-  updateSessionIntent,
-  getConversationHistory,
-} from './sessionManager.js';
+import { addHistoryEntry, updateSessionIntent, getConversationHistory } from './sessionManager.js';
 import { getSuggestedActions } from './interactive.js';
 import { config } from '../config/index.js';
 import {
@@ -26,6 +19,7 @@ import {
   card,
   bulletItem,
   loginRequiredCard,
+  phoneIdentityUnavailableCard,
   unknownIntentCard,
 } from './formatter.js';
 import { createChildLogger } from '../shared/utils/logger.js';
@@ -73,12 +67,17 @@ export class MessageRouter {
     return this.geminiOrchestrator;
   }
 
-  async route(text: string, context: Omit<ChatbotContext, 'isAuthenticated' | 'user'>): Promise<RouteResult> {
+  async route(
+    text: string,
+    context: Omit<ChatbotContext, 'isAuthenticated' | 'user'>,
+  ): Promise<RouteResult> {
     const start = Date.now();
 
-    const userData = await integration.findUserByPhone(context.phone);
+    const phoneVerified = context.phoneVerified !== false;
+    const userData = phoneVerified ? await integration.findUserByPhone(context.phone) : null;
     const fullContext: ChatbotContext = {
       phone: context.phone,
+      phoneVerified,
       isAuthenticated: !!userData,
       originalText: text,
       ...(userData
@@ -94,7 +93,11 @@ export class MessageRouter {
     };
 
     routerLogger.debug(
-      { phone: context.phone, textLength: text.length, isAuthenticated: fullContext.isAuthenticated },
+      {
+        phone: context.phone,
+        textLength: text.length,
+        isAuthenticated: fullContext.isAuthenticated,
+      },
       'MESSAGE_RECEIVED',
     );
 
@@ -113,7 +116,11 @@ export class MessageRouter {
 
     const classification = classifyIntentNLP(text);
     routerLogger.debug(
-      { phone: context.phone, intent: classification.intent, confidence: classification.confidence },
+      {
+        phone: context.phone,
+        intent: classification.intent,
+        confidence: classification.confidence,
+      },
       'deterministic_intent',
     );
 
@@ -125,7 +132,11 @@ export class MessageRouter {
     ) {
       if (classification.intent !== 'unknown') {
         routerLogger.info(
-          { phone: context.phone, intent: classification.intent, confidence: classification.confidence },
+          {
+            phone: context.phone,
+            intent: classification.intent,
+            confidence: classification.confidence,
+          },
           'gemini_skipped_reason:deterministic_nlp_match',
         );
         return this.routeKnownIntent(classification, fullContext, start);
@@ -133,7 +144,11 @@ export class MessageRouter {
     }
 
     routerLogger.debug(
-      { phone: context.phone, nlpIntent: classification.intent, nlpConfidence: classification.confidence },
+      {
+        phone: context.phone,
+        nlpIntent: classification.intent,
+        nlpConfidence: classification.confidence,
+      },
       'ai_fallback: true — escalating to Gemini',
     );
     return this.routeToAI(text, fullContext, start);
@@ -150,15 +165,15 @@ export class MessageRouter {
   ): Promise<RouteResult> {
     const intentName = text.replace('intent:', '') as IntentName;
 
-    routerLogger.info(
-      { phone: context.phone, action: intentName },
-      'interactive_action_received',
-    );
+    routerLogger.info({ phone: context.phone, action: intentName }, 'interactive_action_received');
 
     const isPrivate = PRIVATE_INTENTS.includes(intentName);
 
     if (isPrivate && !context.isAuthenticated) {
-      const response = loginRequiredCard(await getLoginUrl(context.phone));
+      const response =
+        context.phoneVerified === false
+          ? phoneIdentityUnavailableCard()
+          : loginRequiredCard(await getLoginUrl(context.phone));
 
       routerLogger.info(
         { phone: context.phone, action: intentName, reason: 'unauthenticated' },
@@ -178,8 +193,18 @@ export class MessageRouter {
       const response = await this.executeIntent(intentName, context);
 
       updateSessionIntent(context.phone, intentName);
-      addHistoryEntry(context.phone, { role: 'user', text, intent: intentName, timestamp: Date.now() });
-      addHistoryEntry(context.phone, { role: 'bot', text: response.substring(0, 200), intent: intentName, timestamp: Date.now() });
+      addHistoryEntry(context.phone, {
+        role: 'user',
+        text,
+        intent: intentName,
+        timestamp: Date.now(),
+      });
+      addHistoryEntry(context.phone, {
+        role: 'bot',
+        text: response.substring(0, 200),
+        intent: intentName,
+        timestamp: Date.now(),
+      });
 
       const latencyMs = Date.now() - start;
       routerLogger.info(
@@ -207,18 +232,37 @@ export class MessageRouter {
   ): Promise<RouteResult> {
     const intent = classification.intent;
 
-    routerLogger.debug({ intent, confidence: classification.confidence }, 'Routing known intent via NLP');
+    routerLogger.debug(
+      { intent, confidence: classification.confidence },
+      'Routing known intent via NLP',
+    );
 
     try {
       const response = await this.executeIntent(intent, context, classification);
 
       updateSessionIntent(context.phone, intent);
-      addHistoryEntry(context.phone, { role: 'user', text: context.originalText, intent, timestamp: Date.now() });
-      addHistoryEntry(context.phone, { role: 'bot', text: response.substring(0, 200), intent, timestamp: Date.now() });
+      addHistoryEntry(context.phone, {
+        role: 'user',
+        text: context.originalText,
+        intent,
+        timestamp: Date.now(),
+      });
+      addHistoryEntry(context.phone, {
+        role: 'bot',
+        text: response.substring(0, 200),
+        intent,
+        timestamp: Date.now(),
+      });
 
       const latencyMs = Date.now() - start;
       routerLogger.info(
-        { phone: context.phone, intent, confidence: classification.confidence, routedVia: 'nlp', latencyMs },
+        {
+          phone: context.phone,
+          intent,
+          confidence: classification.confidence,
+          routedVia: 'nlp',
+          latencyMs,
+        },
         'NLP fast path routed',
       );
 
@@ -230,7 +274,10 @@ export class MessageRouter {
         routedVia: 'nlp',
       };
     } catch (error) {
-      routerLogger.warn({ error, intent, confidence: classification.confidence }, 'NLP fast path failed, escalating to AI');
+      routerLogger.warn(
+        { error, intent, confidence: classification.confidence },
+        'NLP fast path failed, escalating to AI',
+      );
       return this.routeToAI(context.originalText, context, start);
     }
   }
@@ -243,7 +290,10 @@ export class MessageRouter {
     const orchestrator = this.getGeminiOrchestrator();
 
     if (!orchestrator) {
-      routerLogger.warn({ phone: context.phone }, 'gemini_request_skipped: no API key — falling back to unknown');
+      routerLogger.warn(
+        { phone: context.phone },
+        'gemini_request_skipped: no API key — falling back to unknown',
+      );
       return this.fallbackAI(text, context, start, 'no_api_key');
     }
 
@@ -304,7 +354,10 @@ export class MessageRouter {
     }
 
     if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
-      const response = loginRequiredCard(await getLoginUrl(context.phone));
+      const response =
+        context.phoneVerified === false
+          ? phoneIdentityUnavailableCard()
+          : loginRequiredCard(await getLoginUrl(context.phone));
       this.recordAIExchange(context, text, intent, response);
       return {
         intent,
@@ -349,7 +402,10 @@ export class MessageRouter {
         routedVia: 'ai',
       };
     } catch (error) {
-      routerLogger.error({ error, phone: context.phone, intent }, 'AI-routed intent execution failed');
+      routerLogger.error(
+        { error, phone: context.phone, intent },
+        'AI-routed intent execution failed',
+      );
       return this.fallbackAI(text, context, start, 'execution_error', classification);
     }
   }
@@ -429,7 +485,9 @@ export class MessageRouter {
     }
 
     if (PRIVATE_INTENTS.includes(intent) && !context.user?.studentId) {
-      return loginRequiredCard(await getLoginUrl(context.phone));
+      return context.phoneVerified === false
+        ? phoneIdentityUnavailableCard()
+        : loginRequiredCard(await getLoginUrl(context.phone));
     }
 
     const args = this.buildToolArgs(intent, context, classification);
@@ -513,10 +571,7 @@ export class MessageRouter {
     };
   }
 
-  private formatToolResult(
-    intent: IntentName,
-    data: unknown,
-  ): string | null {
+  private formatToolResult(intent: IntentName, data: unknown): string | null {
     if (!data || typeof data !== 'object') return null;
     const d = data as Record<string, unknown>;
 
@@ -542,15 +597,21 @@ export class MessageRouter {
 
   private formatAttendance(d: Record<string, unknown>): string | null {
     if (d.hasData === false) {
-      return card('📊 Attendance', ['No attendance records found.', '', 'Please contact your administrator.']);
+      return card('📊 Attendance', [
+        'No attendance records found.',
+        '',
+        'Please contact your administrator.',
+      ]);
     }
     const overall = typeof d.overallPercentage === 'number' ? d.overallPercentage : 0;
-    const subjects = Array.isArray(d.subjects) ? (d.subjects as Array<{
-      subject: string;
-      percentage: number;
-      attendedClasses: number;
-      totalClasses: number;
-    }>) : [];
+    const subjects = Array.isArray(d.subjects)
+      ? (d.subjects as Array<{
+          subject: string;
+          percentage: number;
+          attendedClasses: number;
+          totalClasses: number;
+        }>)
+      : [];
     return attendanceCard(overall, subjects);
   }
 
@@ -572,12 +633,14 @@ export class MessageRouter {
     if (d.hasData === false) {
       return card('📅 Schedule', ['No schedule found for the requested day.']);
     }
-    const entries = Array.isArray(d.entries) ? (d.entries as Array<{
-      timeSlot: string;
-      subject: string;
-      room: string;
-      type: string;
-    }>) : [];
+    const entries = Array.isArray(d.entries)
+      ? (d.entries as Array<{
+          timeSlot: string;
+          subject: string;
+          room: string;
+          type: string;
+        }>)
+      : [];
     const dayLabel = String(d.dateLabel ?? 'Today');
     const dayOfWeek = String(d.dayOfWeek ?? '');
     return scheduleCard(dayOfWeek ? `${dayLabel} (${dayOfWeek})` : dayLabel, entries);
@@ -587,12 +650,14 @@ export class MessageRouter {
     if (d.hasData === false) {
       return card('📝 Results', ['No results found.', '', 'Please contact your administrator.']);
     }
-    const results = Array.isArray(d.subjects) ? (d.subjects as Array<{
-      subject: string;
-      grade: string;
-      marksObtained: number;
-      totalMarks: number;
-    }>) : [];
+    const results = Array.isArray(d.subjects)
+      ? (d.subjects as Array<{
+          subject: string;
+          grade: string;
+          marksObtained: number;
+          totalMarks: number;
+        }>)
+      : [];
     const cgpa = typeof d.cgpa === 'number' ? d.cgpa : 0;
     return resultsCard(results, cgpa);
   }
@@ -612,11 +677,13 @@ export class MessageRouter {
   }
 
   private formatAnnouncements(d: Record<string, unknown>): string | null {
-    const entries = Array.isArray(d.entries) ? (d.entries as Array<{
-      title: string;
-      content: string;
-      updatedAt?: string;
-    }>) : [];
+    const entries = Array.isArray(d.entries)
+      ? (d.entries as Array<{
+          title: string;
+          content: string;
+          updatedAt?: string;
+        }>)
+      : [];
     return announcementsCard(
       entries.map((e) => ({
         title: e.title,
@@ -632,10 +699,12 @@ export class MessageRouter {
       return card('🔍 Search', ['No information found for your query.']);
     }
     const category = String(d.category ?? 'Information').replace(/_/g, ' ');
-    const entries = Array.isArray(d.entries) ? (d.entries as Array<{
-      title: string;
-      content: string;
-    }>) : [];
+    const entries = Array.isArray(d.entries)
+      ? (d.entries as Array<{
+          title: string;
+          content: string;
+        }>)
+      : [];
     if (entries.length === 0) return null;
     if (entries.length === 1) {
       const e = entries[0]!;

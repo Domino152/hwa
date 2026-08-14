@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
     ws: { isOpen: boolean };
     user: { id: string };
     end: ReturnType<typeof vi.fn>;
+    logout: ReturnType<typeof vi.fn>;
     sendMessage: ReturnType<typeof vi.fn>;
     relayMessage: ReturnType<typeof vi.fn>;
+    signalRepository: { lidMapping: { getPNForLID: ReturnType<typeof vi.fn> } };
   }>,
   authRegistered: true,
 }));
@@ -20,13 +22,23 @@ vi.mock('baileys', () => ({
       ws: { isOpen: false },
       user: { id: 'bot@s.whatsapp.net' },
       end: vi.fn(),
+      logout: vi.fn(async () => undefined),
       sendMessage: vi.fn(),
       relayMessage: vi.fn(),
+      signalRepository: { lidMapping: { getPNForLID: vi.fn() } },
     };
     mocks.sockets.push(socket);
     return socket;
   }),
   DisconnectReason: { loggedOut: 401, forbidden: 403, restartRequired: 515 },
+  WAMessageStatus: {
+    ERROR: 0,
+    PENDING: 1,
+    SERVER_ACK: 2,
+    DELIVERY_ACK: 3,
+    READ: 4,
+    PLAYED: 5,
+  },
   useMultiFileAuthState: vi.fn(async () => ({
     state: { creds: { registered: mocks.authRegistered }, keys: {} },
     saveCreds: vi.fn(async () => undefined),
@@ -70,7 +82,10 @@ describe('WhatsApp lifecycle reliability', () => {
     await service.initialize();
 
     for (let index = 0; index < 12; index++) {
-      emitConnection(index, { connection: 'close', lastDisconnect: { error: new Error('network') } });
+      emitConnection(index, {
+        connection: 'close',
+        lastDisconnect: { error: new Error('network') },
+      });
       await vi.advanceTimersByTimeAsync(30_000);
     }
 
@@ -139,6 +154,59 @@ describe('WhatsApp lifecycle reliability', () => {
 
     emitConnection(0, { qr: 'new-session-qr' });
     expect(service.getQR()).toBe('new-session-qr');
+    await service.shutdown();
+  });
+
+  it('tracks server, delivery, and read acknowledgements', async () => {
+    const updateOutgoingMessageStatus = vi.fn(async () => undefined);
+    const service = new ChatService('./test-auth', 1_000);
+    service.setInboxService({ updateOutgoingMessageStatus } as never);
+    await service.initialize();
+
+    mocks.sockets[0]!.ev.emit('messages.update', [
+      { key: { id: 'out-1' }, update: { status: 2 } },
+      { key: { id: 'out-2' }, update: { status: 3 } },
+    ]);
+    mocks.sockets[0]!.ev.emit('message-receipt.update', [
+      { key: { id: 'out-3' }, receipt: { readTimestamp: 123 } },
+    ]);
+    await Promise.resolve();
+
+    expect(updateOutgoingMessageStatus).toHaveBeenCalledWith('out-1', 'sent');
+    expect(updateOutgoingMessageStatus).toHaveBeenCalledWith('out-2', 'delivered');
+    expect(updateOutgoingMessageStatus).toHaveBeenCalledWith('out-3', 'read');
+    await service.shutdown();
+  });
+
+  it('persists pending before applying an acknowledgement observed during send', async () => {
+    const updateOutgoingMessageStatus = vi.fn(async () => undefined);
+    const recordOutgoingMessage = vi.fn(async (message) => message);
+    const service = new ChatService('./test-auth', 1_000);
+    service.setInboxService({
+      updateOutgoingMessageStatus,
+      upsertConversationForOutgoing: vi.fn(async () => ({ _id: 'conversation-1' })),
+      recordOutgoingMessage,
+    } as never);
+    await service.initialize();
+    mocks.sockets[0]!.ws.isOpen = true;
+    emitConnection(0, { connection: 'open' });
+    mocks.sockets[0]!.sendMessage.mockImplementation(async () => {
+      mocks.sockets[0]!.ev.emit('messages.update', [
+        { key: { id: 'out-race' }, update: { status: 2 } },
+      ]);
+      return { key: { id: 'out-race' } };
+    });
+
+    await service.sendMessage('15551234567@lid', 'hello', 'request-1', '919999999999');
+
+    expect(mocks.sockets[0]!.sendMessage).toHaveBeenCalledWith('15551234567@lid', {
+      text: 'hello',
+      linkPreview: null,
+    });
+    expect(recordOutgoingMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'out-race', status: 'pending' }),
+    );
+    expect(updateOutgoingMessageStatus).toHaveBeenLastCalledWith('out-race', 'sent');
     await service.shutdown();
   });
 });

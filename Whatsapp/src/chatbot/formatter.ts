@@ -77,7 +77,7 @@ export function greetingCard(name: string, isFirstTime: boolean): string {
     return [
       `👋 *Welcome, ${name}!*`,
       '',
-      'I\'m your *College AI Assistant*.',
+      "I'm your *College AI Assistant*.",
       'I can help you with:',
       '',
       '📊 *Attendance* — Check your attendance',
@@ -100,7 +100,7 @@ export function helpCard(): string {
     '',
     '📊 *Attendance* — Check attendance percentage',
     '💰 *Fees* — View fee details & dues',
-    '📅 *Timetable* — Today\'s schedule',
+    "📅 *Timetable* — Today's schedule",
     '📝 *Results* — Exam results & CGPA',
     '📢 *Announcements* — College news',
     '👤 *Profile* — Your student profile',
@@ -125,6 +125,14 @@ export function loginRequiredCard(loginUrl: string): string {
   ].join('\n');
 }
 
+export function phoneIdentityUnavailableCard(): string {
+  return card('Phone verification required', [
+    'Your message arrived through a private WhatsApp identifier.',
+    'I can answer public questions, but cannot securely open personal records yet.',
+    'Please try again after the linked device finishes syncing.',
+  ]);
+}
+
 export function logoutCard(loginUrl?: string): string {
   const lines = [
     '👋 *You have been logged out*',
@@ -143,7 +151,7 @@ export function logoutCard(loginUrl?: string): string {
 
 export function unknownIntentCard(): string {
   return [
-    '🤔 *I didn\'t quite get that*',
+    "🤔 *I didn't quite get that*",
     '',
     'Try asking about:',
     '',
@@ -158,7 +166,12 @@ export function unknownIntentCard(): string {
 
 export function attendanceCard(
   overallPercentage: number,
-  subjects: Array<{ subject: string; percentage: number; attendedClasses: number; totalClasses: number }>,
+  subjects: Array<{
+    subject: string;
+    percentage: number;
+    attendedClasses: number;
+    totalClasses: number;
+  }>,
 ): string {
   const lines = [
     sectionHeader('📊 Attendance Summary', '📊'),
@@ -211,10 +224,7 @@ export function scheduleCard(
     ].join('\n');
   }
 
-  const lines = [
-    sectionHeader(`📅 ${dayLabel}`, '📅'),
-    '',
-  ];
+  const lines = [sectionHeader(`📅 ${dayLabel}`, '📅'), ''];
 
   for (const e of entries) {
     const typeEmoji = e.type === 'lab' ? '🧪' : e.type === 'tutorial' ? '📝' : '📖';
@@ -231,10 +241,7 @@ export function resultsCard(
   results: Array<{ subject: string; grade: string; marksObtained: number; totalMarks: number }>,
   cgpa: number,
 ): string {
-  const lines = [
-    sectionHeader('📝 Exam Results', '📝'),
-    '',
-  ];
+  const lines = [sectionHeader('📝 Exam Results', '📝'), ''];
 
   for (const r of results) {
     const emoji = r.grade.startsWith('A') ? '🌟' : r.grade.startsWith('B') ? '✅' : '⚠️';
@@ -271,17 +278,10 @@ export function announcementsCard(
   announcements: Array<{ title: string; content: string; priority: string; publishedAt: Date }>,
 ): string {
   if (announcements.length === 0) {
-    return [
-      sectionHeader('📢 Announcements', '📢'),
-      '',
-      '  No new announcements.',
-    ].join('\n');
+    return [sectionHeader('📢 Announcements', '📢'), '', '  No new announcements.'].join('\n');
   }
 
-  const lines = [
-    sectionHeader('📢 Announcements', '📢'),
-    '',
-  ];
+  const lines = [sectionHeader('📢 Announcements', '📢'), ''];
 
   for (const a of announcements) {
     const priorityEmoji = a.priority === 'urgent' ? '🔴' : a.priority === 'high' ? '🟡' : '🔵';
