@@ -2,22 +2,23 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { attendanceService } from "@/services/attendanceService";
 import { studentService } from "@/services/studentService";
 import type { DashboardSummary, DateRangeParams, MarkDailyPayload } from "@/types/attendance.types";
-import type { ClassStudentsResponse } from "@/types/student.types";
-import { SEMESTERS } from "@/types/student.types";
+import type { Student } from "@/types/student.types";
 import { getAcademicYear, todayISO } from "@/lib/academicYear";
 import { toast } from "sonner";
 
 export const useClassStudents = (
   department: string,
-  semester: number,
+  _semester: number,
   section: string,
   enabled: boolean
 ) => {
   return useQuery({
-    queryKey: ["students", "class", department, semester, section],
-    queryFn: (): Promise<ClassStudentsResponse> =>
-      studentService.getByClass(department, semester, section),
-    enabled: enabled && !!department && !!semester && !!section,
+    queryKey: ["students", "class", department, section],
+    queryFn: async (): Promise<{ students: Student[]; total: number }> => {
+      const result = await studentService.getAll({ department, section });
+      return { students: result.data, total: result.total };
+    },
+    enabled: enabled && !!department && !!section,
   });
 };
 
@@ -58,21 +59,14 @@ export const useDashboardSummary = () => {
     queryFn: async (): Promise<DashboardSummary> => {
       const today = todayISO();
       const academicYear = getAcademicYear(new Date());
-      const [totalStudents, bySemester] = await Promise.all([
-        studentService.count(),
-        Promise.all(
-          SEMESTERS.map((semester) =>
-            attendanceService.getDailyByDateRange({
-              startDate: today,
-              endDate: today,
-              semester,
-              academicYear,
-            })
-          )
-        ),
-      ]);
+      const totalStudents = await studentService.count();
+      const records = await attendanceService.getDailyByDateRange({
+        startDate: today,
+        endDate: today,
+        semester: 3,
+        academicYear,
+      });
 
-      const records = bySemester.flat();
       let present = 0;
       let absent = 0;
       let late = 0;

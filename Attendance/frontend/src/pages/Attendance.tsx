@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useClassStudents, useDailyAttendance, useMarkAttendance } from "@/hooks/useAttendance";
-import { DEPARTMENTS, SEMESTERS, SECTIONS } from "@/types/student.types";
+import { DEPARTMENTS, YEARS, SECTIONS } from "@/types/student.types";
 import type { Student } from "@/types/student.types";
 import { SUBJECTS } from "@/types/attendance.types";
 import type { DailyStatus } from "@/types/attendance.types";
@@ -24,24 +24,24 @@ interface CellLate {
 }
 
 export function Attendance() {
-  const [filters, setFilters] = useState({ department: "", semester: 0, section: "" });
+  const [filters, setFilters] = useState({ department: "", year: 0, section: "" });
   const [subject, setSubject] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [cellLate, setCellLate] = useState<CellLate>({});
 
-  const canLoad = !!filters.department && !!filters.semester && !!filters.section;
+  const canLoad = !!filters.department && !!filters.year && !!filters.section;
   const academicYear = getAcademicYear(new Date(date));
 
   const { data: classData, isLoading: rosterLoading } = useClassStudents(
     filters.department,
-    filters.semester,
+    filters.year,
     filters.section,
     canLoad
   );
   const { data: dailyRecords = [], isLoading: dailyLoading } = useDailyAttendance(
     canLoad && subject
-      ? { startDate: date, endDate: date, semester: filters.semester, academicYear }
+      ? { startDate: date, endDate: date, semester: filters.year, academicYear }
       : null
   );
   const markMutation = useMarkAttendance();
@@ -59,10 +59,10 @@ export function Attendance() {
     const initialLate: CellLate = {};
 
     students.forEach((s) => {
-      const record = dailyForSubject.find((r) => r.studentId === s.studentId);
+      const record = dailyForSubject.find((r) => r.studentId === s._id);
       const marked = record?.status === "present" || record?.status === "late";
-      initial[s.studentId] = marked ? "present" : "absent";
-      initialLate[s.studentId] = { minutes: 0, seconds: 0 };
+      initial[s._id] = marked ? "present" : "absent";
+      initialLate[s._id] = { minutes: 0, seconds: 0 };
     });
 
     setAttendance(initial);
@@ -126,16 +126,16 @@ export function Attendance() {
     }
 
     const records = students.map((student) => {
-      const late = getLate(student.studentId);
-      const base = attendance[student.studentId] ?? "absent";
+      const late = getLate(student._id);
+      const base = attendance[student._id] ?? "absent";
       const status: DailyStatus =
         late.minutes > 0 || late.seconds > 0 ? "late" : base;
       return {
-        studentId: student.studentId,
+        studentId: student._id,
         subject,
         date,
         status,
-        semester: filters.semester,
+        semester: filters.year,
         academicYear,
       };
     });
@@ -174,15 +174,15 @@ export function Attendance() {
           </SelectContent>
         </Select>
         <Select
-          value={filters.semester?.toString() || ""}
-          onValueChange={(v) => setFilters((p) => ({ ...p, semester: Number(v) }))}
+          value={filters.year?.toString() || ""}
+          onValueChange={(v) => setFilters((p) => ({ ...p, year: Number(v) }))}
         >
           <SelectTrigger className="w-[110px] h-9 text-sm">
-            <SelectValue placeholder="Semester" />
+            <SelectValue placeholder="Year" />
           </SelectTrigger>
           <SelectContent>
-            {SEMESTERS.map((s) => (
-              <SelectItem key={s} value={s.toString()}>Sem {s}</SelectItem>
+            {YEARS.map((y) => (
+              <SelectItem key={y} value={y.toString()}>Year {y}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -294,7 +294,7 @@ export function Attendance() {
             <tbody>
               {students.map((student, rowIdx) => (
                 <tr
-                  key={student.id}
+                  key={student._id}
                   className={`border-b border-gray-200 ${
                     rowIdx % 2 === 0 ? "bg-white" : "bg-gray-50/50"
                   } hover:bg-blue-50/50 transition-colors`}
@@ -302,15 +302,15 @@ export function Attendance() {
                   <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 text-center border-r border-gray-200">
                     <input
                       type="checkbox"
-                      checked={attendance[student.studentId] === "present"}
-                      onChange={() => toggleAttendance(student.studentId)}
+                      checked={attendance[student._id] === "present"}
+                      onChange={() => toggleAttendance(student._id)}
                       className="accent-blue-500"
                     />
                   </td>
                   <td className="sticky left-10 z-10 bg-inherit px-3 py-1.5 font-mono text-xs border-r border-gray-200">
                     <span
                       className={
-                        attendance[student.studentId] === "absent"
+                        attendance[student._id] === "absent"
                           ? "text-red-600 font-semibold"
                           : "text-gray-900"
                       }
@@ -327,13 +327,13 @@ export function Attendance() {
                       placeholder="MM:SS"
                       defaultValue={
                         (() => {
-                          const late = getLate(student.studentId);
+                          const late = getLate(student._id);
                           return late.minutes > 0 || late.seconds > 0
                             ? `${String(late.minutes).padStart(2, "0")}:${String(late.seconds).padStart(2, "0")}`
                             : "";
                         })()
                       }
-                      onBlur={(e) => handleLateChange(student.studentId, e.target.value)}
+                      onBlur={(e) => handleLateChange(student._id, e.target.value)}
                       className="w-[72px] h-7 text-center text-xs border border-gray-300 rounded px-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                     />
                   </td>

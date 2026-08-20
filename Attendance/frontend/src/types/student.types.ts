@@ -1,47 +1,27 @@
 export interface Student {
-  id: string;
-  studentId: string;
-  registerNumber: string;
-  rollNumber: string;
+  _id: string;
   fullName: string;
-  email: string;
-  phone: string;
-  gender: "male" | "female" | "other";
+  registerNumber: string;
   department: string;
-  program: string;
-  semester: number;
+  year: number;
   section: string;
-  batch: string;
-  advisor: string;
-  status: "active" | "graduated" | "suspended";
-  isActive: boolean;
+  email?: string;
+  phone?: string;
   password?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+export type CreateStudentInput = Omit<Student, "_id" | "createdAt" | "updatedAt">;
+export type UpdateStudentInput = Partial<CreateStudentInput>;
+
 export interface StudentFilters {
   department?: string;
-  semester?: number;
+  year?: number;
   section?: string;
   search?: string;
-  page?: number;
-  limit?: number;
-}
-
-export interface PaginatedStudents {
-  data: Student[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-export interface ClassStudentsResponse {
-  students: Student[];
-  total: number;
 }
 
 export const DEPARTMENTS = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "IT"] as const;
-export const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const YEARS = [1, 2, 3, 4] as const;
 export const SECTIONS = ["A", "B", "C", "D"] as const;

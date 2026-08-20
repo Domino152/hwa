@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DEPARTMENTS, SEMESTERS, SECTIONS } from "@/types/student.types";
+import { DEPARTMENTS, YEARS, SECTIONS } from "@/types/student.types";
 import type { StudentFilters } from "@/types/student.types";
 import { Search, X } from "lucide-react";
 
@@ -54,17 +54,17 @@ export function StudentFiltersBar({ filters, onFilterChange }: StudentFiltersPro
         </SelectContent>
       </Select>
       <Select
-        value={filters.semester?.toString() || ""}
+        value={filters.year?.toString() || ""}
         onValueChange={(value) =>
-          onFilterChange({ ...filters, semester: value ? Number(value) : undefined })
+          onFilterChange({ ...filters, year: value ? Number(value) : undefined })
         }
       >
         <SelectTrigger className="w-[120px]">
-          <SelectValue placeholder="Semester" />
+          <SelectValue placeholder="Year" />
         </SelectTrigger>
         <SelectContent>
-          {SEMESTERS.map((sem) => (
-            <SelectItem key={sem} value={sem.toString()}>Sem {sem}</SelectItem>
+          {YEARS.map((y) => (
+            <SelectItem key={y} value={y.toString()}>Year {y}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -81,7 +81,7 @@ export function StudentFiltersBar({ filters, onFilterChange }: StudentFiltersPro
           ))}
         </SelectContent>
       </Select>
-      {(filters.department || filters.semester || filters.section || filters.search) && (
+      {(filters.department || filters.year || filters.section || filters.search) && (
         <Button
           variant="ghost"
           size="sm"

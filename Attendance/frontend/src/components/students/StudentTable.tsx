@@ -22,15 +22,15 @@ export const StudentTable = memo(function StudentTable({ students, isLoading }: 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Register No.</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Dept</TableHead>
-              <TableHead>Semester</TableHead>
-              <TableHead>Section</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {[...Array(5)].map((_, i) => (
+            <TableHead>Register No.</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Dept</TableHead>
+            <TableHead>Year</TableHead>
+            <TableHead>Section</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {[...Array(5)].map((_, i) => (
               <TableRow key={i}>
                 {[...Array(5)].map((_, j) => (
                   <TableCell key={j}>
@@ -73,13 +73,13 @@ export const StudentTable = memo(function StudentTable({ students, isLoading }: 
         </TableHeader>
         <TableBody>
           {students.map((student) => (
-            <TableRow key={student.id}>
+            <TableRow key={student._id}>
               <TableCell className="font-mono text-sm">{student.registerNumber}</TableCell>
               <TableCell className="font-medium">{student.fullName}</TableCell>
               <TableCell>
                 <Badge variant="outline">{student.department}</Badge>
               </TableCell>
-              <TableCell>Sem {student.semester}</TableCell>
+              <TableCell>Year {student.year}</TableCell>
               <TableCell>Section {student.section}</TableCell>
             </TableRow>
           ))}
