@@ -9,6 +9,7 @@ import { integration } from '../integration/index.js';
 import { authService } from '../modules/auth/index.js';
 import type { KnowledgeCategory } from '../database/models/KnowledgeBase.js';
 import { parseNaturalDate, type ParsedDate } from './dateParser.js';
+import { isLidJid } from '../modules/whatsapp/utils/phone.js';
 import {
   attendanceCard,
   feesCard,
@@ -35,10 +36,11 @@ export interface GenerateOptions {
   session: ChatSession;
 }
 
-export async function getLoginUrl(phone: string): Promise<string> {
-  const { rawToken } = await authService.generateLoginToken(phone);
-  const base = config.PUBLIC_APP_URL.replace(/\/#\/login\/?$/, '');
-  return `${base}/#/login?token=${rawToken}`;
+export async function getLoginUrl(phone: string, jid?: string): Promise<string> {
+  const lid = jid && isLidJid(jid) ? phone : undefined;
+  const { rawToken } = await authService.generateLoginToken(phone, lid);
+  const base = (config.LOGIN_PORTAL_URL || config.PUBLIC_APP_URL || '').replace(/\/#\/login\/?$/, '').replace(/\/+$/, '');
+  return `${base}/#/login?token=${encodeURIComponent(rawToken)}`;
 }
 
 /**
@@ -62,18 +64,18 @@ export async function generateResponse(
   }
 
   if (PRIVATE_INTENTS.includes(intent) && !context.isAuthenticated) {
-    return loginRequiredCard(await getLoginUrl(context.phone));
+    return loginRequiredCard(await getLoginUrl(context.phone, context.jid));
   }
 
   switch (intent) {
     case IntentName.Greeting:
-      return handleGreeting(session, context.user);
+      return handleGreeting(session, context.jid, context.user);
 
     case IntentName.Login:
-      return handleLogin(context.phone);
+      return handleLogin(context.phone, context.jid);
 
     case IntentName.Logout:
-      return handleLogout(context.isAuthenticated, context.phone);
+      return handleLogout(context.isAuthenticated, context.phone, context.jid);
 
     case IntentName.Attendance:
       return await handleAttendance(context.user!.studentId, classification);
@@ -108,18 +110,18 @@ export async function generateResponse(
   }
 }
 
-async function handleGreeting(session: ChatSession, user?: AuthenticatedUserInfo): Promise<string> {
+async function handleGreeting(session: ChatSession, jid: string | undefined, user?: AuthenticatedUserInfo): Promise<string> {
   if (user) {
     const isFirstTime = !session.greetingSent;
     markGreetingSent(session.phone);
     return greetingCard(user.fullName, isFirstTime);
   }
 
-  return loginRequiredCard(await getLoginUrl(session.phone));
+  return loginRequiredCard(await getLoginUrl(session.phone, jid));
 }
 
-async function handleLogin(phone: string): Promise<string> {
-  const url = await getLoginUrl(phone);
+async function handleLogin(phone: string, jid?: string): Promise<string> {
+  const url = await getLoginUrl(phone, jid);
   return [
     '🔐 *Login Required*',
     '',
@@ -131,9 +133,9 @@ async function handleLogin(phone: string): Promise<string> {
   ].join('\n');
 }
 
-async function handleLogout(isAuthenticated: boolean, phone: string): Promise<string> {
+async function handleLogout(isAuthenticated: boolean, phone: string, jid?: string): Promise<string> {
   if (!isAuthenticated) {
-    const loginUrl = await getLoginUrl(phone);
+    const loginUrl = await getLoginUrl(phone, jid);
     return [
       'ℹ️ *Already Logged Out*',
       '',
@@ -146,7 +148,7 @@ async function handleLogout(isAuthenticated: boolean, phone: string): Promise<st
   await authService.deactivateWhatsAppSessionByPhone(phone);
   clearSession(phone);
 
-  const loginUrl = await getLoginUrl(phone);
+  const loginUrl = await getLoginUrl(phone, jid);
   return logoutCard(loginUrl);
 }
 
@@ -225,7 +227,7 @@ async function handleSchedule(
     department: user.department ?? 'CSE',
     year: user.year ?? 4,
     section: user.section ?? 'A',
-  });
+  }, dateInfo.dayOfWeek);
 
   if (!data.hasData) {
     return card(`📅 ${dateInfo.label} Schedule`, [

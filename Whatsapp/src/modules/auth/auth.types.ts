@@ -56,7 +56,7 @@ export interface MeResponse {
 }
 
 /** Strip passwordHash from user document before sending to client. */
-export function toSafeUser(doc: { _id: Types.ObjectId; fullName: string; username: string; role: string; studentId: string; department: string; year: number; section: string; whatsappNumber: string | null }) {
+export function toSafeUser(doc: { _id: Types.ObjectId; fullName: string; username: string; role: string; studentId: string; department: string; year: number; section: string; whatsappNumber: string | null; whatsappLid?: string | null }) {
   return {
     id: String(doc._id),
     fullName: doc.fullName,
@@ -67,5 +67,6 @@ export function toSafeUser(doc: { _id: Types.ObjectId; fullName: string; usernam
     year: doc.year,
     section: doc.section,
     whatsappNumber: doc.whatsappNumber,
+    whatsappLid: doc.whatsappLid ?? null,
   };
 }

@@ -8,6 +8,9 @@ let isConnecting = false;
 let listenersRegistered = false;
 let disconnectRequested = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let lastConnectionCheck = 0;
+let lastConnectionState: 0 | 1 | 2 = 0;
+const CONNECTION_CHECK_TTL_MS = 5_000;
 
 const INITIAL_RETRY_DELAY_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 30_000;
@@ -33,12 +36,21 @@ function registerConnectionListeners(): void {
   });
 
   mongoose.connection.on('error', (err) => {
+    isConnected = false;
     logger.error({ err }, 'MongoDB connection error');
   });
 
   mongoose.connection.on('disconnected', () => {
     isConnected = false;
     logger.warn('MongoDB disconnected; Mongoose will attempt to reconnect');
+    isConnecting = false;
+    logger.warn('MongoDB disconnected — will reconnect on next query');
+  });
+
+  mongoose.connection.on('reconnected', () => {
+    isConnected = true;
+    isConnecting = false;
+    logger.info('MongoDB reconnected');
   });
 }
 
@@ -56,9 +68,12 @@ export async function connectDB(attempt = 0): Promise<void> {
 
   try {
     await mongoose.connect(config.MONGO_URI, MONGOOSE_DEFAULT_OPTIONS);
+    isConnected = true;
+    isConnecting = false;
   } catch (err) {
     isConnecting = false;
     if (disconnectRequested || retryTimer) return;
+    isConnected = false;
 
     const delay = getRetryDelay(attempt);
     logger.error(
@@ -73,6 +88,36 @@ export async function connectDB(attempt = 0): Promise<void> {
   }
 }
 
+/**
+ * Quick connection health check.
+ * Returns true if MongoDB is connected and ready.
+ * Caches the result for CONNECTION_CHECK_TTL_MS to avoid hammering the connection.
+ */
+export function isDBConnected(): boolean {
+  const now = Date.now();
+  if (now - lastConnectionCheck < CONNECTION_CHECK_TTL_MS) {
+    return lastConnectionState === 1;
+  }
+  lastConnectionCheck = now;
+  lastConnectionState = mongoose.connection.readyState as 0 | 1 | 2;
+  return lastConnectionState === 1;
+}
+
+/**
+ * Wait for MongoDB to become connected, with a timeout.
+ * Useful for critical paths that require a healthy DB.
+ */
+export async function waitForDB(timeoutMs = 10_000): Promise<boolean> {
+  if (isDBConnected()) return true;
+
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (isDBConnected()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return isDBConnected();
+}
+
 export async function disconnectDB(): Promise<void> {
   disconnectRequested = true;
   if (retryTimer) {
@@ -85,8 +130,4 @@ export async function disconnectDB(): Promise<void> {
   isConnected = false;
   isConnecting = false;
   logger.info('MongoDB disconnected gracefully');
-}
-
-export function isDBConnected(): boolean {
-  return isConnected;
 }

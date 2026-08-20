@@ -66,6 +66,7 @@ const envSchema = z
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
     JWT_EXPIRES_IN: z.string().default('7d'),
     PUBLIC_APP_URL: z.string().default('http://localhost:5173'),
+    LOGIN_PORTAL_URL: z.string().default('http://localhost:5173/hwa'),
     BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(20).default(10),
     GEMINI_API_KEY: z.string().optional(),
     GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
@@ -112,6 +113,14 @@ const envSchema = z
           message:
             'PUBLIC_APP_URL must be a public HTTPS URL in production (no localhost, private IPs, or non-HTTPS)',
           path: ['PUBLIC_APP_URL'],
+        });
+      }
+
+      if (!process.env.LOGIN_PORTAL_URL || isPrivateOrInsecureUrl(data.LOGIN_PORTAL_URL)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'LOGIN_PORTAL_URL must be a public HTTPS URL in production (no localhost, private IPs, or non-HTTPS)',
+          path: ['LOGIN_PORTAL_URL'],
         });
       }
 

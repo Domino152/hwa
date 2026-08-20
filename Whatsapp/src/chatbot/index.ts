@@ -17,6 +17,7 @@ export {
   buildMainMenuList,
   buildGreetingMenu,
   buildHelpMenu,
+  buildTextFallbackMenu,
   getSuggestedActions,
   type ButtonOption,
   type ListSection,

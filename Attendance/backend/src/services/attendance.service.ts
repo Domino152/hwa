@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { Attendance, IAttendance } from "../models/Attendance";
+import { WhatsAppDailyAttendance } from "../models/WhatsAppDailyAttendance";
 import { ApiError } from "../utils/ApiError";
 
 export interface MarkAttendancePayload {
@@ -69,6 +70,39 @@ export class AttendanceService {
     }));
 
     await Attendance.bulkWrite(bulkOps);
+
+    // Dual-write to WhatsApp bot's dailyattendances collection
+    const now = new Date();
+    const month = now.getMonth();
+    const academicYearStart = month >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const academicYear = `${academicYearStart}-${String(academicYearStart + 1).slice(2)}`;
+
+    const waBulkOps = records.map((record) => {
+      const semester = record.year * 2 - (record.year === 1 && month < 6 ? 1 : 0);
+      return {
+        updateOne: {
+          filter: {
+            studentId: record.registerNumber,
+            date: attendanceDate,
+            subject,
+          },
+          update: {
+            $set: {
+              studentId: record.registerNumber,
+              subject,
+              date: attendanceDate,
+              status: record.status,
+              semester,
+              academicYear,
+            },
+          },
+          upsert: true,
+        },
+      };
+    });
+
+    await WhatsAppDailyAttendance.bulkWrite(waBulkOps);
+    console.log(`[Attendance] Dual-wrote ${waBulkOps.length} records to dailyattendances. Sample studentId: ${records[0]?.registerNumber}`);
 
     return Attendance.find({
       date: attendanceDate,

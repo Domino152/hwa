@@ -2,8 +2,9 @@ import { ValidationError } from '../../../shared/utils/errors.js';
 
 const DIGITS_ONLY = /\D/g;
 const JID_REGEX = /^[0-9]{7,15}@s\.whatsapp\.net$/;
+const LID_JID_REGEX = /^[0-9]+@lid$/;
 const MIN_PHONE_LENGTH = 7;
-const MAX_PHONE_LENGTH = 15;
+const MAX_PHONE_LENGTH = 20;
 
 export function normalizePhoneNumber(input: string): string {
   if (typeof input !== 'string') {
@@ -49,6 +50,15 @@ export function extractPhoneFromJid(jid: string): string {
 
 export function isValidJid(jid: string): boolean {
   return typeof jid === 'string' && JID_REGEX.test(jid);
+}
+
+/**
+ * Check whether a JID is a WhatsApp Linked Device ID (LID).
+ * LIDs look like "151621002616864@lid" — they represent the account on a
+ * linked device (e.g. WhatsApp Web) and are NOT real phone numbers.
+ */
+export function isLidJid(jid: string): boolean {
+  return typeof jid === 'string' && LID_JID_REGEX.test(jid);
 }
 
 export const JID_DOMAIN = 's.whatsapp.net';

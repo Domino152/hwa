@@ -53,4 +53,13 @@ export class StudentController {
       next(error);
     }
   }
+
+  static async sendWelcome(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await StudentService.sendWelcomeMessage(req.params.id);
+      new ApiResponse(200, result, "Welcome message sent successfully").send(res);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

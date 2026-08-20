@@ -62,7 +62,7 @@ const scheduleSchema = new Schema<ISchedule, IScheduleModel>(
       type: String,
       required: [true, 'Day of week is required'],
       trim: true,
-      enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+      enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     },
     periodNumber: {
       type: Number,

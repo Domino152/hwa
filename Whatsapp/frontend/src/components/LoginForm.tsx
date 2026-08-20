@@ -19,11 +19,12 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 interface LoginFormProps {
   phone: string;
-  loginToken: string;
+  lid?: string;
+  loginToken?: string;
   onSuccess: () => void;
 }
 
-export function LoginForm({ phone, loginToken, onSuccess }: LoginFormProps) {
+export function LoginForm({ phone, lid, onSuccess }: LoginFormProps) {
   const [role, setRole] = useState<'student' | 'parent'>('student');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,13 +51,11 @@ export function LoginForm({ phone, loginToken, onSuccess }: LoginFormProps) {
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
 
-      const linkPhone = await resolveLinkPhone(loginToken, phone);
-      if (linkPhone) {
-        try {
-          await api.post('/auth/link-whatsapp', { phone: linkPhone });
-        } catch {
-          // Link may already exist — continue
-        }
+      try {
+        await api.post('/auth/link-whatsapp', { phone, lid });
+      } catch {
+        // Link may already exist — continue
+      }
       }
 
       onSuccess();

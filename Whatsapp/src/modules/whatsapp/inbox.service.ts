@@ -7,7 +7,14 @@ import {
 } from '../../database/models/Conversation.js';
 import { emitIncomingMessage } from '../../sockets/index.js';
 import { ChatService } from './chat.service.js';
-import { chatbotService, buildHelpMenu, type ChatbotResponse } from '../../chatbot/index.js';
+import { extractPhoneFromJid } from './utils/phone.js';
+import {
+  chatbotService,
+  buildHelpMenu,
+  buildTextFallbackMenu,
+  getSuggestedActions,
+  type ChatbotResponse,
+} from '../../chatbot/index.js';
 import { integration } from '../../integration/index.js';
 import {
   shouldProcessMessage,
@@ -173,6 +180,7 @@ export class InboxService {
       const chatbotResult = await chatbotService.processMessage(userMessage, {
         phone,
         phoneVerified,
+        jid,
         originalText: userMessage,
       });
       const requestId = `auto-reply-${Date.now()}`;
@@ -249,9 +257,27 @@ export class InboxService {
     requestId: string,
   ): Promise<void> {
     try {
+      const convo = conversation ?? await Conversation.findOne({ phone });
+      if (!convo) return;
+
       // For greeting: send the personalized text first
       if (chatbotResult.intent === 'greeting') {
-        await this.chatService.sendMessage(jid, chatbotResult.response, requestId, phone);
+        const textResult = await this.chatService.sendMessage(jid, chatbotResult.response, requestId);
+
+        const outgoingTextData: IMessage = {
+          messageId: textResult.messageId,
+          direction: 'outgoing',
+          type: 'text',
+          content: chatbotResult.response,
+          status: 'sent',
+          timestamp: new Date(),
+          fromMe: true,
+          pushName: null,
+          requestId,
+        };
+        void Conversation.addMessage(String(convo._id), outgoingTextData).catch((err) => {
+          autoReplyLogger.error({ err, phone }, 'Failed to persist outgoing greeting');
+        });
       }
 
       // Send the interactive list menu
@@ -262,27 +288,52 @@ export class InboxService {
         autoReplyLogger.warn({ err, phone }, 'User lookup failed; sending public menu');
       }
       const menu = buildHelpMenu(!!userData);
+      const textMenu = buildTextFallbackMenu(menu);
 
-      const listResult = await this.chatService.sendListMessage(jid, menu);
-      if (!listResult) throw new Error('Interactive messages are disabled or unsupported');
+      const listResult = await this.chatService.sendListMessage(jid, menu, textMenu, requestId);
+
+      // If list message failed (null result), fall back to plain text menu
+      let actualMessageId = listResult;
+      let usedFallback = !listResult;
+      if (!actualMessageId) {
+        autoReplyLogger.warn(
+          { phone, intent: chatbotResult.intent },
+          'List message returned null — sending text fallback',
+        );
+        const fallbackResult = await this.chatService.sendMessage(jid, textMenu, requestId);
+        actualMessageId = fallbackResult.messageId;
+      }
 
       autoReplyLogger.info(
-        { phone, intent: chatbotResult.intent, messageId: listResult },
+        { phone, intent: chatbotResult.intent, messageId: actualMessageId, usedFallback },
         'interactive_menu_sent',
       );
 
       // Record the list menu as an outgoing message
-      if (conversation && listResult) {
-        await Conversation.addMessage(String(conversation._id), {
-          messageId: listResult,
-          direction: 'outgoing',
-          type: 'text',
-          content: `[Interactive Menu: ${chatbotResult.intent}]`,
-          status: 'pending',
-          timestamp: new Date(),
-          fromMe: true,
-          pushName: null,
-          requestId,
+      const outgoingMenuData: IMessage = {
+        messageId: actualMessageId ?? `menu-${Date.now()}`,
+        direction: 'outgoing',
+        type: 'text',
+        content: `[Interactive Menu: ${chatbotResult.intent}]`,
+        status: 'sent',
+        timestamp: new Date(),
+        fromMe: true,
+        pushName: null,
+        requestId,
+      };
+      void Conversation.addMessage(String(convo._id), outgoingMenuData).catch((err) => {
+        autoReplyLogger.error({ err, phone }, 'Failed to persist outgoing menu');
+      });
+
+      // Send quick-action buttons after the list menu
+      const suggestedActions = getSuggestedActions(chatbotResult.intent, !!userData);
+      if (suggestedActions.length > 0) {
+        void this.chatService.sendButtonsMessage(jid, {
+          text: '_Quick Actions:_',
+          footerText: 'Tap an option or type a message',
+          buttons: suggestedActions,
+        }).catch((err) => {
+          autoReplyLogger.debug({ err, phone }, 'Failed to send greeting/help buttons (non-critical)');
         });
       }
     } catch (err) {

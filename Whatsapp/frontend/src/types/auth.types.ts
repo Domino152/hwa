@@ -8,6 +8,7 @@ export interface User {
   year: number;
   section: string;
   whatsappNumber: string | null;
+  whatsappLid: string | null;
 }
 
 export interface LoginResponse {
@@ -36,4 +37,10 @@ export interface ApiResponse<T> {
   };
   requestId: string;
   timestamp: string;
+}
+
+export interface RedeemTokenResponse {
+  phone: string;
+  lid?: string;
+  redirectTo: string;
 }

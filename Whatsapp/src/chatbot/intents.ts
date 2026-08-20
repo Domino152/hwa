@@ -158,6 +158,7 @@ export interface AuthenticatedUserInfo {
 export interface ChatbotContext {
   phone: string;
   phoneVerified?: boolean;
+  jid?: string;
   isAuthenticated: boolean;
   originalText: string;
   user?: AuthenticatedUserInfo;

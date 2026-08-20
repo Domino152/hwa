@@ -26,7 +26,8 @@ export class AuthController {
 
   linkWhatsApp = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     if (!req.user) return;
-    const result = await this.authService.linkWhatsApp(req.user.userId, req.body.phone);
+    const { phone, lid } = req.body as { phone: string; lid?: string };
+    const result = await this.authService.linkWhatsApp(req.user.userId, phone, lid);
     sendSuccess(res, result);
   };
 
@@ -49,7 +50,7 @@ export class AuthController {
     }
     sendSuccess(res, {
       phone: result.phone,
-      userId: result.userId,
+      lid: result.lid,
       redirectTo: '/login/success',
     });
   };

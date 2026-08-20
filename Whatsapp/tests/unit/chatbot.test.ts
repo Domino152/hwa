@@ -653,9 +653,22 @@ describe('Authentication Acceptance Test', () => {
     vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
 
     const result = await service.processMessage('Attendance', { phone });
-    expect(result.response).toContain('token=securetoken123');
+    expect(result.response).toContain('#/login?token=securetoken123');
     expect(result.response).not.toContain('?phone=');
     expect(result.response).not.toContain('919999999999');
+  });
+
+  it('login URL uses HashRouter format with base path', async () => {
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+    const result = await service.processMessage('Hello', { phone: '919999999999' });
+    expect(result.response).toContain('http://localhost:5173/hwa/#/login?token=');
+  });
+
+  it('login URL handles trailing slash in LOGIN_PORTAL_URL', async () => {
+    vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
+    const result = await service.processMessage('Hello', { phone: '919999999999' });
+    expect(result.response).not.toContain('hwa//');
+    expect(result.response).toContain('/hwa/#/login?token=');
   });
 
   it('greeting for unauthenticated user does not mark greetingSent', async () => {

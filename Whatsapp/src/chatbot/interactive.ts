@@ -273,30 +273,53 @@ export function getSuggestedActions(intent: string, isAuthenticated: boolean): B
   ];
 
   const intentSuggestions: Record<string, ButtonOption[]> = {
-    attendance: [
-      { id: 'intent:schedule', text: '📅 Today\'s Classes' },
+    greeting: [
+      { id: 'intent:schedule', text: '📅 Timetable' },
+      { id: 'intent:attendance', text: '📊 Attendance' },
       { id: 'intent:results', text: '📝 Results' },
-      ...common,
+    ],
+    help: [
+      { id: 'intent:schedule', text: '📅 Timetable' },
+      { id: 'intent:attendance', text: '📊 Attendance' },
+      { id: 'intent:results', text: '📝 Results' },
+    ],
+    attendance: [
+      { id: 'intent:fees', text: '💰 Fees' },
+      { id: 'intent:results', text: '📝 Results' },
+      { id: 'intent:schedule', text: '📅 Timetable' },
     ],
     fees: [
-      { id: 'intent:attendance', text: '📊 Attendance' },
       { id: 'intent:results', text: '📝 Results' },
-      ...common,
+      { id: 'intent:attendance', text: '📊 Attendance' },
+      { id: 'intent:schedule', text: '📅 Timetable' },
     ],
     schedule: [
+      { id: 'schedule:tomorrow', text: '⏩ Tomorrow' },
       { id: 'intent:attendance', text: '📊 Attendance' },
-      { id: 'intent:announcements', text: '📢 Announcements' },
-      ...common,
+      { id: 'intent:results', text: '📝 Results' },
     ],
     results: [
       { id: 'intent:attendance', text: '📊 Attendance' },
+      { id: 'intent:fees', text: '💰 Fees' },
+      { id: 'intent:profile', text: '👤 Profile' },
+    ],
+    profile: [
       { id: 'intent:schedule', text: '📅 Timetable' },
-      ...common,
+      { id: 'intent:attendance', text: '📊 Attendance' },
+      { id: 'intent:fees', text: '💰 Fees' },
+    ],
+    announcements: [
+      { id: 'intent:schedule', text: '📅 Timetable' },
+      { id: 'intent:attendance', text: '📊 Attendance' },
+      { id: 'intent:profile', text: '👤 Profile' },
     ],
     public_information: [
       { id: 'intent:schedule', text: '📅 Timetable' },
       { id: 'intent:announcements', text: '📢 Announcements' },
       ...common,
+    ],
+    login_required: [
+      { id: 'intent:login', text: '🔑 Login' },
     ],
     unknown: isAuthenticated ? privateActions.slice(0, 3) : publicActions,
   };
@@ -304,4 +327,36 @@ export function getSuggestedActions(intent: string, isAuthenticated: boolean): B
   return intentSuggestions[intent] ?? (isAuthenticated
     ? [...privateActions.slice(0, 2), ...common]
     : publicActions);
+}
+
+/**
+ * Convert a list menu into a plain text fallback for when interactive
+ * list messages fail (e.g. error 479 on unsupported clients).
+ */
+export function buildTextFallbackMenu(menu: {
+  title: string;
+  description: string;
+  sections: ListSection[];
+}): string {
+  const lines: string[] = [
+    `*${menu.title}*`,
+    '',
+    menu.description,
+    '',
+  ];
+
+  for (const section of menu.sections) {
+    lines.push(`*${section.title}*`);
+    for (const row of section.rows) {
+      lines.push(`  • *${row.title}*`);
+      if (row.description) {
+        lines.push(`    _${row.description}_`);
+      }
+      lines.push(`    Type: \`${row.id.replace('intent:', '')}\``);
+    }
+    lines.push('');
+  }
+
+  lines.push('_Reply with any of the above keywords (e.g. "attendance", "fees")._');
+  return lines.join('\n');
 }

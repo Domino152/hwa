@@ -15,6 +15,9 @@ export interface Student {
   advisor: string;
   status: "active" | "graduated" | "suspended";
   isActive: boolean;
+  password?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface StudentFilters {

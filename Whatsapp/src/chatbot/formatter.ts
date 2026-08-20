@@ -173,19 +173,33 @@ export function attendanceCard(
     totalClasses: number;
   }>,
 ): string {
+  const overallEmoji = overallPercentage >= 85 ? '🟢' : overallPercentage >= 75 ? '🟡' : '🔴';
+  const overallStatus = overallPercentage >= 85
+    ? 'Great attendance!'
+    : overallPercentage >= 75
+    ? 'Needs improvement'
+    : 'Warning: Low attendance!';
+
   const lines = [
-    sectionHeader('📊 Attendance Summary', '📊'),
+    sectionHeader('📊 Attendance', '📊'),
     '',
-    `  *Overall:* ${progressBar(overallPercentage)}\n`,
+    `  ${overallEmoji} *Overall: ${overallPercentage}%*`,
+    `  ${progressBar(overallPercentage)}`,
+    `  _${overallStatus}_`,
+    '',
+    '━━━━━━━━━━━━━━━━━━━━━━━━',
+    '',
+    '  📚 *Subject-wise:*',
+    '',
   ];
 
   for (const s of subjects) {
     const emoji = s.percentage >= 85 ? '🟢' : s.percentage >= 75 ? '🟡' : '🔴';
-    lines.push(`  ${emoji} *${s.subject}*`);
-    lines.push(`    ${s.attendedClasses}/${s.totalClasses} classes — ${progressBar(s.percentage)}`);
-    lines.push('');
+    lines.push(`  ${emoji} *${s.subject}* — ${s.percentage}%`);
+    lines.push(`    ${s.attendedClasses}/${s.totalClasses} classes`);
   }
 
+  lines.push('');
   lines.push(`_${DIVIDER}_`);
   return lines.join('\n');
 }

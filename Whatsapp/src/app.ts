@@ -12,7 +12,7 @@ import { errorHandler } from './middleware/error-handler.js';
 import { notFoundHandler } from './middleware/not-found.js';
 import whatsappRoutes, { chatService } from './modules/whatsapp/whatsapp.routes.js';
 import { createHealthRoutes } from './modules/health/health.routes.js';
-import authRoutes from './modules/auth/auth.routes.js';
+import authRoutes, { authService } from './modules/auth/auth.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
 import feeRoutes from './modules/fees/fee.routes.js';
 import resultRoutes from './modules/results/result.routes.js';
@@ -38,6 +38,9 @@ export function createApp(): express.Express {
   app.use(rateLimiter);
   app.use(requestLogger);
 
+  // Initialize cross-service dependencies after all modules are loaded
+  authService.setChatService(chatService);
+
   const swaggerOptions: swaggerJsdoc.Options = {
     definition: {
       openapi: '3.0.0',
@@ -59,14 +62,14 @@ export function createApp(): express.Express {
   app.use(`${API_PREFIX}/auth`, authRoutes);
   app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
   app.use(`${API_PREFIX}/fees`, feeRoutes);
-app.use(`${API_PREFIX}/results`, resultRoutes);
+  app.use(`${API_PREFIX}/results`, resultRoutes);
   app.use(`${API_PREFIX}/detailed-results`, detailedResultRoutes);
   app.use(`${API_PREFIX}/schedule`, scheduleRoutes);
   app.use(`${API_PREFIX}/subjects`, subjectRoutes);
   app.use(`${API_PREFIX}/announcements`, announcementRoutes);
   app.use(`${API_PREFIX}/students`, studentRoutes);
   app.use(`${API_PREFIX}/parents`, parentRoutes);
-app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
+  app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
   app.use(`${API_PREFIX}/assignments`, assignmentRoutes);
   app.use(`${API_PREFIX}/public-info`, publicInfoRoutes);
 

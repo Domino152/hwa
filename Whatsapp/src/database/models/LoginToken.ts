@@ -7,6 +7,7 @@ const TOKEN_RAW_BYTES = 32;
 export interface ILoginToken extends Document {
   tokenHash: string;
   phone: string;
+  lid: string | null;
   purpose: 'whatsapp_login';
   expiresAt: Date;
   used: boolean;
@@ -15,7 +16,7 @@ export interface ILoginToken extends Document {
 }
 
 export interface ILoginTokenModel extends Model<ILoginToken> {
-  createForPhone(phone: string): Promise<{ tokenId: string; rawToken: string }>;
+  createForPhone(phone: string, lid?: string): Promise<{ tokenId: string; rawToken: string }>;
   findValid(rawToken: string): Promise<ILoginToken | null>;
   markUsed(tokenId: string): Promise<void>;
 }
@@ -35,6 +36,11 @@ const loginTokenSchema = new Schema<ILoginToken, ILoginTokenModel>(
     phone: {
       type: String,
       required: true,
+      index: true,
+    },
+    lid: {
+      type: String,
+      default: null,
       index: true,
     },
     purpose: {
@@ -60,7 +66,7 @@ const loginTokenSchema = new Schema<ILoginToken, ILoginTokenModel>(
   { timestamps: true },
 );
 
-loginTokenSchema.statics.createForPhone = async function (phone: string) {
+loginTokenSchema.statics.createForPhone = async function (phone: string, lid?: string) {
   const rawToken = crypto.randomBytes(TOKEN_RAW_BYTES).toString('hex');
   const tokenHash = sha256(rawToken);
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60 * 1000);
@@ -68,6 +74,7 @@ loginTokenSchema.statics.createForPhone = async function (phone: string) {
   const doc = await this.create({
     tokenHash,
     phone,
+    lid: lid ?? null,
     purpose: 'whatsapp_login',
     expiresAt,
     used: false,

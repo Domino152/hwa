@@ -123,7 +123,10 @@ export class ToolExecutor {
     const year = student ? Math.ceil(student.semester / 2) : 4;
     const section = student?.section ?? 'A';
 
-    const result = await this.integration.schedule.getByStudent({ department, year, section });
+    const result = await this.integration.schedule.getByStudent(
+      { department, year, section },
+      dateInfo?.dayOfWeek,
+    );
 
     if (!result.hasData) {
       return { success: true, data: { hasData: false, message: 'No schedule found' } };

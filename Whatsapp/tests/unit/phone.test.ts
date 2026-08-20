@@ -4,6 +4,7 @@ import {
   formatJid,
   extractPhoneFromJid,
   isValidJid,
+  isLidJid,
 } from '../../src/modules/whatsapp/utils/phone.js';
 
 describe('Phone Utility', () => {
@@ -29,7 +30,7 @@ describe('Phone Utility', () => {
     });
 
     it('throws on too-long numbers', () => {
-      expect(() => normalizePhoneNumber('12345678901234567890')).toThrow();
+      expect(() => normalizePhoneNumber('123456789012345678901')).toThrow();
     });
 
     it('throws on non-string input', () => {
@@ -57,6 +58,10 @@ describe('Phone Utility', () => {
       expect(() => formatJid('abc')).toThrow();
       expect(() => formatJid('')).toThrow();
     });
+
+    it('formats digits to LID JID when domain is "lid"', () => {
+      expect(formatJid('151621002616864', 'lid')).toBe('151621002616864@lid');
+    });
   });
 
   describe('extractPhoneFromJid', () => {
@@ -80,6 +85,23 @@ describe('Phone Utility', () => {
       expect(isValidJid('123456@s.whatsapp.net')).toBe(false);
       expect(isValidJid('abcdefghij@s.whatsapp.net')).toBe(false);
       expect(isValidJid('1234567890@s.whatsapp.NET')).toBe(false);
+    });
+  });
+
+  describe('isLidJid', () => {
+    it('returns true for LID-format JIDs', () => {
+      expect(isLidJid('151621002616864@lid')).toBe(true);
+      expect(isLidJid('1234567890@lid')).toBe(true);
+    });
+
+    it('returns false for regular phone JIDs', () => {
+      expect(isLidJid('917530063885@s.whatsapp.net')).toBe(false);
+      expect(isLidJid('917530063885')).toBe(false);
+    });
+
+    it('returns false for invalid LID JIDs', () => {
+      expect(isLidJid('151621002616864@LID')).toBe(false);
+      expect(isLidJid('abcdefghij@lid')).toBe(false);
     });
   });
 });

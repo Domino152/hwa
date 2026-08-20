@@ -21,7 +21,6 @@ import { extractPhoneFromJid } from './utils/phone.js';
 import { resolveInboundIdentity, type InboundIdentity } from './utils/identity.js';
 import { useMongoAuthState } from './mongo-auth-state.js';
 import { InboxService } from './inbox.service.js';
-import { Conversation } from '../../database/models/Conversation.js';
 import type { WhatsAppServiceStatus } from '../../shared/types/whatsapp.js';
 import qrCodeTerminal from 'qrcode-terminal';
 import {
@@ -38,6 +37,20 @@ const QR_TIMEOUT_MS = 60_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 const CONNECTING_STALE_MIN_MS = 60_000;
+const FALLBACK_TTL_MS = 5 * 60 * 1000;
+const FALLBACK_CLEANUP_INTERVAL_MS = 60_000;
+
+/**
+ * Metadata stored when sending an interactive message so we can send a
+ * plain-text fallback if WhatsApp later rejects it (commonly error 479
+ * for LID-format recipients on linked devices).
+ */
+interface InteractiveFallback {
+  jid: string;
+  fallbackText: string;
+  requestId: string;
+  expiresAt: number;
+}
 
 export class ChatService {
   private sock: WASocket | null = null;
@@ -64,6 +77,13 @@ export class ChatService {
   private readonly lidToPn = new Map<string, string>();
   private readonly deliveryUpdates = new Map<string, OutgoingDeliveryStatus>();
   private clearAuthState: (() => Promise<void>) | null = null;
+
+  /**
+   * Tracker for interactive messages (lists/buttons) that may need a text
+   * fallback if WhatsApp later returns an ack error (e.g. 479 for LID JIDs).
+   * Keyed by outgoing messageId. Entries auto-expire after FALLBACK_TTL_MS.
+   */
+  private readonly interactiveFallbacks = new Map<string, InteractiveFallback>();
 
   constructor(sessionDir?: string, watchdogIntervalMs?: number) {
     this.sessionDir = sessionDir ?? config.WA_SESSION_DIR;
@@ -97,6 +117,9 @@ export class ChatService {
     } finally {
       this.initializingPromise = null;
     }
+
+    this.reconnectAttempts = 0;
+    this.interactiveFallbacks.clear();
 
     if (failure) {
       this.scheduleReconnect();
@@ -208,6 +231,12 @@ export class ChatService {
         this.trackDeliveryUpdate(key.id, status);
       }
     });
+
+    this.sock.ev.on('messages.update', (updates) => {
+      void this.handleMessageUpdates(updates);
+    });
+
+    this.startFallbackCleanup();
   }
 
   private mapMessageStatus(status: number): OutgoingDeliveryStatus | null {
@@ -431,7 +460,6 @@ export class ChatService {
       await this.persistOutgoingMessage({ phone, jid, text, timestamp, messageId, requestId });
       return { messageId };
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error({ jid, requestId, err }, 'Failed to send message');
 
       if (this.inbox) {
@@ -518,6 +546,113 @@ export class ChatService {
     });
   }
 
+  /**
+   * Register a fallback text for an interactive message so we can recover
+   * if WhatsApp asynchronously rejects the message with error 479.
+   */
+  registerInteractiveFallback(
+    messageId: string,
+    jid: string,
+    fallbackText: string,
+    requestId: string,
+  ): void {
+    this.interactiveFallbacks.set(messageId, {
+      jid,
+      fallbackText,
+      requestId,
+      expiresAt: Date.now() + FALLBACK_TTL_MS,
+    });
+  }
+
+  /**
+   * Handle `messages.update` events from Baileys.
+   * Detects async error acks (e.g. 479) on previously-sent interactive messages
+   * and sends the registered plain-text fallback automatically.
+   */
+  private async handleMessageUpdates(
+    updates: Array<{
+      key?: WAMessageKey;
+      update?: Record<string, unknown>;
+    }>,
+  ): Promise<void> {
+    for (const update of updates) {
+      const messageId = update.key?.id;
+      if (!messageId) continue;
+
+      const fallback = this.interactiveFallbacks.get(messageId);
+      if (!fallback) continue;
+
+      const errorCode = this.extractErrorCode(update.update);
+      if (errorCode === undefined) continue;
+
+      if (errorCode === 479) {
+        this.logger.warn(
+          { jid: fallback.jid, messageId, requestId: fallback.requestId },
+          'Interactive message rejected with error 479 — sending text fallback',
+        );
+        this.interactiveFallbacks.delete(messageId);
+        try {
+          await this.sendMessage(fallback.jid, fallback.fallbackText, `${fallback.requestId}-fallback`);
+        } catch (err) {
+          this.logger.error(
+            { err, jid: fallback.jid, messageId },
+            'Failed to send text fallback after error 479',
+          );
+        }
+      }
+    }
+  }
+
+  private extractErrorCode(update: Record<string, unknown> | undefined): number | undefined {
+    if (!update) return undefined;
+
+    const candidates: unknown[] = [
+      update.error,
+      update.messageStubType,
+      update.status,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'number') return candidate;
+      if (typeof candidate === 'string') {
+        const parsed = Number(candidate);
+        if (!Number.isNaN(parsed)) return parsed;
+      }
+      if (candidate && typeof candidate === 'object') {
+        const obj = candidate as Record<string, unknown>;
+        if (typeof obj.code === 'number') return obj.code;
+        if (typeof obj.code === 'string') {
+          const parsed = Number(obj.code);
+          if (!Number.isNaN(parsed)) return parsed;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private fallbackCleanupTimer: NodeJS.Timeout | null = null;
+
+  private startFallbackCleanup(): void {
+    if (this.fallbackCleanupTimer) return;
+    this.fallbackCleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [id, entry] of this.interactiveFallbacks) {
+        if (entry.expiresAt < now) {
+          this.interactiveFallbacks.delete(id);
+        }
+      }
+    }, FALLBACK_CLEANUP_INTERVAL_MS);
+    this.fallbackCleanupTimer.unref();
+  }
+
+  private stopFallbackCleanup(): void {
+    if (this.fallbackCleanupTimer) {
+      clearInterval(this.fallbackCleanupTimer);
+      this.fallbackCleanupTimer = null;
+    }
+  }
+  }
+
   async logout(): Promise<void> {
     this.shutdownRequested = true;
     const socket = this.sock;
@@ -554,6 +689,8 @@ export class ChatService {
     this.userJid = null;
     this.reconnectAttempts = 0;
     this.logger.info('WhatsApp service stopped; authentication state preserved');
+    this.interactiveFallbacks.clear();
+    this.stopFallbackCleanup();
     emitToAll('connection-status', {
       state: 'close',
       timestamp: new Date().toISOString(),
@@ -582,6 +719,11 @@ export class ChatService {
     return this.qr;
   }
 
+  /**
+   * Send a list message (dropdown menu) to a user.
+   * Falls back to plain text if unsupported.
+   * Registers a text fallback so that async error 479 acks can be recovered.
+   */
   async sendListMessage(
     jid: string,
     params: {
@@ -591,12 +733,26 @@ export class ChatService {
       footerText?: string;
       sections: ListSection[];
     },
+    fallbackText?: string,
+    requestId?: string,
   ): Promise<string | null> {
     if (!config.WA_INTERACTIVE_MESSAGES_ENABLED) return null;
     if (!this.sock || this.state !== 'open') {
       throw new ServiceUnavailableError('WhatsApp not connected');
     }
-    return sendInteractiveList(this.sock, jid, params);
+
+    const messageId = await sendInteractiveList(this.sock, jid, params);
+
+    if (messageId && fallbackText) {
+      this.registerInteractiveFallback(
+        messageId,
+        jid,
+        fallbackText,
+        requestId ?? `list-${Date.now()}`,
+      );
+    }
+
+    return messageId;
   }
 
   async sendButtonsMessage(

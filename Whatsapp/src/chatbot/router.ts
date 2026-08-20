@@ -23,6 +23,9 @@ import {
   unknownIntentCard,
 } from './formatter.js';
 import { createChildLogger } from '../shared/utils/logger.js';
+import { User } from '../database/models/User.js';
+import { comparePassword } from '../modules/auth/password.service.js';
+import { normalizePhoneNumber } from '../modules/whatsapp/utils/phone.js';
 
 const routerLogger = createChildLogger({ module: 'message-router' });
 
@@ -78,6 +81,7 @@ export class MessageRouter {
     const fullContext: ChatbotContext = {
       phone: context.phone,
       phoneVerified,
+      ...(context.jid ? { jid: context.jid } : {}),
       isAuthenticated: !!userData,
       originalText: text,
       ...(userData
@@ -105,6 +109,11 @@ export class MessageRouter {
       { phone: context.phone, isAuthenticated: fullContext.isAuthenticated },
       'auth_check',
     );
+
+    const credentialLoginResult = await this.tryCredentialLogin(text, fullContext);
+    if (credentialLoginResult) {
+      return credentialLoginResult;
+    }
 
     if (this.isButtonClick(text)) {
       routerLogger.info(
@@ -155,7 +164,7 @@ export class MessageRouter {
   }
 
   private isButtonClick(text: string): boolean {
-    return text.startsWith('intent:');
+    return text.startsWith('intent:') || text.startsWith('schedule:');
   }
 
   private async routeButtonClick(
@@ -163,6 +172,18 @@ export class MessageRouter {
     context: ChatbotContext,
     start: number,
   ): Promise<RouteResult> {
+    // Handle schedule:tomorrow, schedule:yesterday, etc.
+    if (text.startsWith('schedule:')) {
+      const dateExpression = text.replace('schedule:', '');
+      const classification: ClassificationResult = {
+        intent: IntentName.Schedule,
+        confidence: 1.0,
+        dateExpression,
+        extractedSubject: null,
+      };
+      return this.routeKnownIntent(classification, context, start);
+    }
+
     const intentName = text.replace('intent:', '') as IntentName;
 
     routerLogger.info({ phone: context.phone, action: intentName }, 'interactive_action_received');
@@ -173,7 +194,7 @@ export class MessageRouter {
       const response =
         context.phoneVerified === false
           ? phoneIdentityUnavailableCard()
-          : loginRequiredCard(await getLoginUrl(context.phone));
+          : loginRequiredCard(await getLoginUrl(context.phone, context.jid));
 
       routerLogger.info(
         { phone: context.phone, action: intentName, reason: 'unauthenticated' },
@@ -357,7 +378,7 @@ export class MessageRouter {
       const response =
         context.phoneVerified === false
           ? phoneIdentityUnavailableCard()
-          : loginRequiredCard(await getLoginUrl(context.phone));
+          : loginRequiredCard(await getLoginUrl(context.phone, context.jid));
       this.recordAIExchange(context, text, intent, response);
       return {
         intent,
@@ -487,7 +508,7 @@ export class MessageRouter {
     if (PRIVATE_INTENTS.includes(intent) && !context.user?.studentId) {
       return context.phoneVerified === false
         ? phoneIdentityUnavailableCard()
-        : loginRequiredCard(await getLoginUrl(context.phone));
+        : loginRequiredCard(await getLoginUrl(context.phone, context.jid));
     }
 
     const args = this.buildToolArgs(intent, context, classification);
@@ -712,5 +733,89 @@ export class MessageRouter {
     }
     const lines = entries.map((e) => `${bulletItem(`${e.title}: ${e.content.substring(0, 150)}`)}`);
     return [sectionHeader(category, 'ℹ️'), '', ...lines].join('\n');
+  }
+
+  private async tryCredentialLogin(
+    text: string,
+    context: ChatbotContext,
+  ): Promise<RouteResult | null> {
+    const trimmed = text.trim();
+    const match = trimmed.match(/^login\s+(\S+)\s+(\S+)$/i);
+    if (!match) return null;
+
+    const rollNumber = match[1]!;
+    const password = match[2]!;
+
+    routerLogger.info({ phone: context.phone, studentId: rollNumber }, 'credential_login_attempt');
+
+    const userDoc = await User.findOne({ studentId: rollNumber, isActive: true }).select('+passwordHash');
+    if (!userDoc) {
+      return {
+        intent: IntentName.Login,
+        response: card('❌ Login Failed', [
+          'No account found for this roll number.',
+          '',
+          'Please check your roll number and try again.',
+        ]),
+        originalText: text,
+        suggestedActions: getSuggestedActions(IntentName.Login, false),
+        routedVia: 'nlp',
+      };
+    }
+
+    const rawHash = userDoc.get('passwordHash');
+    if (!rawHash) {
+      return {
+        intent: IntentName.Login,
+        response: card('❌ Login Failed', [
+          'Account not properly configured.',
+          '',
+          'Please contact your administrator.',
+        ]),
+        originalText: text,
+        suggestedActions: getSuggestedActions(IntentName.Login, false),
+        routedVia: 'nlp',
+      };
+    }
+
+    const isMatch = await comparePassword(password, String(rawHash));
+    if (!isMatch) {
+      return {
+        intent: IntentName.Login,
+        response: card('❌ Login Failed', [
+          'Incorrect password.',
+          '',
+          'Please check your password and try again.',
+        ]),
+        originalText: text,
+        suggestedActions: getSuggestedActions(IntentName.Login, false),
+        routedVia: 'nlp',
+      };
+    }
+
+    const normalizedPhone = normalizePhoneNumber(context.phone);
+    userDoc.whatsappNumber = normalizedPhone;
+    userDoc.whatsappSessionActive = true;
+    await userDoc.save();
+
+    routerLogger.info({ phone: context.phone, studentId: rollNumber }, 'credential_login_success');
+
+    const response = [
+      '✅ *Login Successful!*',
+      '',
+      `Welcome back, *${userDoc.fullName}*!`,
+      '',
+      'Your WhatsApp is now linked to your college account.',
+      '',
+      'Type *help* to see what you can do.',
+    ].join('\n');
+
+    return {
+      intent: IntentName.Login,
+      response,
+      originalText: text,
+      suggestedActions: getSuggestedActions(IntentName.Login, true),
+      routedVia: 'nlp',
+    };
   }
 }

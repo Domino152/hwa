@@ -8,6 +8,7 @@ export interface IStudent extends Document {
   section: string;
   email?: string;
   phone?: string;
+  password: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +58,11 @@ const studentSchema = new Schema<IStudent>(
       type: String,
       trim: true,
       match: [/^\d{10}$/, "Phone must be 10 digits"],
+    },
+    password: {
+      type: String,
+      required: [true, "Password is required"],
+      minlength: [5, "Password must be at least 5 characters"],
     },
   },
   { timestamps: true }

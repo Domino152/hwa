@@ -729,6 +729,7 @@ src/
 | `JWT_SECRET` | Yes | — | Min 32 chars, must not contain weak patterns in prod |
 | `JWT_EXPIRES_IN` | No | `7d` | JWT token expiry |
 | `PUBLIC_APP_URL` | Prod | `http://localhost:5173` | Public URL for login links (HTTPS, no localhost in prod) |
+| `LOGIN_PORTAL_URL` | Prod | `http://localhost:5173/hwa` | Public login portal base URL (HTTPS, no localhost in prod) |
 | `BCRYPT_ROUNDS` | No | `10` | Password hashing cost (4-20) |
 
 ## NPM Scripts

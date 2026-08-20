@@ -10,6 +10,11 @@ export const linkWhatsAppSchema = z.object({
   phone: z
     .string()
     .min(7, 'Phone number is too short')
-    .max(15, 'Phone number is too long')
+    .max(20, 'Phone number is too long')
     .regex(/^\d+$/, 'Phone must contain only digits'),
+  lid: z
+    .string()
+    .min(1, 'LID is required')
+    .regex(/^\d+$/, 'LID must contain only digits')
+    .optional(),
 });

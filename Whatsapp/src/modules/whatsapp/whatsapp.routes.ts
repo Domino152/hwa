@@ -37,6 +37,11 @@ router.post(
 
 router.post('/logout', asyncHandler(whatsappController.logout));
 
+router.post(
+  '/register-student',
+  asyncHandler(whatsappController.registerStudent),
+);
+
 router.get(
   '/conversations',
   validate(conversationsQuerySchema, 'query'),

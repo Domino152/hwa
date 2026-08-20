@@ -314,7 +314,7 @@ describe('MessageRouter', () => {
     it('login URL contains token, not phone number', async () => {
       vi.mocked(integration.findUserByPhone).mockResolvedValue(null);
       const result = await router.route('intent:attendance', { phone: 'unauth-3' });
-      expect(result.response).toContain('token=');
+      expect(result.response).toContain('#/login?token=');
       expect(result.response).not.toContain('?phone=');
     });
 
