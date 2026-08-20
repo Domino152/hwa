@@ -21,6 +21,7 @@ import { extractPhoneFromJid } from './utils/phone.js';
 import { resolveInboundIdentity, type InboundIdentity } from './utils/identity.js';
 import { useMongoAuthState } from './mongo-auth-state.js';
 import { InboxService } from './inbox.service.js';
+import { Conversation } from '../../database/models/Conversation.js';
 import type { WhatsAppServiceStatus } from '../../shared/types/whatsapp.js';
 import qrCodeTerminal from 'qrcode-terminal';
 import {
@@ -208,7 +209,7 @@ export class ChatService {
       }
     });
 
-    socket.ev.on('lid-mapping.update', ({ lid, pn }) => {
+    socket.ev.on('lid-mapping.update' as never, ({ lid, pn }: { lid: string; pn: string }) => {
       if (this.sock !== socket) return;
       this.lidToPn.set(lid, pn);
       this.logger.debug({ lid }, 'LID mapping cached');
@@ -476,7 +477,7 @@ export class ChatService {
               status: 'failed',
               timestamp,
               requestId,
-              error: errorMsg,
+              error: err instanceof Error ? err.message : String(err),
             });
           }
         } catch (persistErr) {
@@ -540,7 +541,9 @@ export class ChatService {
     return resolveInboundIdentity(msg, async (lid) => {
       const cached = this.lidToPn.get(lid);
       if (cached) return cached;
-      const mapped = await this.sock?.signalRepository.lidMapping.getPNForLID(lid);
+      const repo = this.sock?.signalRepository as Record<string, unknown> | undefined;
+      const lidMapping = repo?.lidMapping as { getPNForLID?: (lid: string) => Promise<string | undefined> } | undefined;
+      const mapped = await lidMapping?.getPNForLID?.(lid);
       if (mapped) this.lidToPn.set(lid, mapped);
       return mapped ?? null;
     });

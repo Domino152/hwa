@@ -7,7 +7,6 @@ import {
 } from '../../database/models/Conversation.js';
 import { emitIncomingMessage } from '../../sockets/index.js';
 import { ChatService } from './chat.service.js';
-import { extractPhoneFromJid } from './utils/phone.js';
 import {
   chatbotService,
   buildHelpMenu,

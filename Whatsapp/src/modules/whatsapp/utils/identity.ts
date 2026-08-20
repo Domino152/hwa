@@ -1,5 +1,9 @@
-import { isLidUser, isPnUser, type WAMessage } from 'baileys';
+import { isLidUser, type WAMessage } from 'baileys';
 import { extractPhoneFromJid } from './phone.js';
+
+function isPnJid(jid: string): boolean {
+  return typeof jid === 'string' && /^\d+@s\.whatsapp\.net$/.test(jid);
+}
 
 export interface InboundIdentity {
   replyJid: string;
@@ -15,10 +19,12 @@ export async function resolveInboundIdentity(
 ): Promise<InboundIdentity> {
   const key = message.key;
   const replyJid = key.remoteJid ?? '';
-  const alternate = key.remoteJidAlt ?? key.participantAlt ?? null;
+  const alternate = (key as Record<string, unknown>)['remoteJidAlt'] as string | undefined
+    ?? (key as Record<string, unknown>)['participantAlt'] as string | undefined
+    ?? null;
 
-  let pnJid: string | null = isPnUser(replyJid) ? replyJid : null;
-  if (!pnJid && alternate && isPnUser(alternate)) pnJid = alternate;
+  let pnJid: string | null = isPnJid(replyJid) ? replyJid : null;
+  if (!pnJid && alternate && isPnJid(alternate)) pnJid = alternate;
   if (!pnJid && isLidUser(replyJid)) pnJid = await resolvePnForLid(replyJid);
 
   const lidJid = isLidUser(replyJid)
