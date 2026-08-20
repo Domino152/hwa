@@ -651,7 +651,6 @@ export class ChatService {
       this.fallbackCleanupTimer = null;
     }
   }
-  }
 
   async logout(): Promise<void> {
     this.shutdownRequested = true;
