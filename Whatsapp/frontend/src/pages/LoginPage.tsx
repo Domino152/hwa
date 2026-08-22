@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import type { ApiResponse, RedeemTokenResponse } from '../types/auth.types';
 import { LoginForm } from '../components/LoginForm';
-import { AuthStatus } from '../components/AuthStatus';
+import { Card, CardContent } from '../components/ui/card';
+import { CheckCircle } from 'lucide-react';
 
 export function LoginPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,12 +22,12 @@ export function LoginPage() {
       return;
     }
 
-    const loginToken = searchParams.get('token');
-    if (!loginToken) return;
+    const tok = searchParams.get('token');
+    if (!tok) return;
 
     setRedeeming(true);
     api
-      .get<ApiResponse<RedeemTokenResponse>>(`/auth/redeem-token?token=${encodeURIComponent(loginToken)}`)
+      .get<ApiResponse<RedeemTokenResponse>>(`/auth/redeem-token?token=${encodeURIComponent(tok)}`)
       .then((res) => {
         const data = res.data.data as RedeemTokenResponse;
         setPhone(data.phone);
@@ -81,7 +82,25 @@ export function LoginPage() {
         </div>
 
         {isLinked ? (
-          <AuthStatus onLogout={handleLogout} />
+          <Card className="w-full max-w-md">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <CheckCircle className="h-12 w-12 text-green-500" />
+                <p className="text-sm font-medium text-green-700">
+                  You are already logged in!
+                </p>
+                <p className="text-xs text-gray-500">
+                  Go back to WhatsApp and type <strong>help</strong> to see available commands.
+                </p>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-500 hover:text-gray-700 underline mt-2"
+                >
+                  Sign in with a different account
+                </button>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <LoginForm phone={phone} lid={lid} loginToken={loginToken} onSuccess={() => setIsLinked(true)} />
         )}

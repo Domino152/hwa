@@ -1,49 +1,37 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import api from '../lib/api';
 import type { LoginResponse } from '../types/auth.types';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
-
-const loginSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
+import { CheckCircle, AlertCircle } from 'lucide-react';
 
 interface LoginFormProps {
-  phone: string;
-  lid?: string;
   loginToken?: string;
+  phone?: string;
+  lid?: string;
   onSuccess: () => void;
 }
 
-export function LoginForm({ phone, lid, onSuccess }: LoginFormProps) {
+export function LoginForm({ loginToken, phone, lid, onSuccess }: LoginFormProps) {
   const [role, setRole] = useState<'student' | 'parent'>('student');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-  });
-
-  const onSubmit = async (data: LoginFormValues) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
+    setSuccess(null);
     setIsLoading(true);
 
     try {
       const loginRes = await api.post<{ data: LoginResponse }>('/auth/login', {
-        ...data,
+        username,
+        password,
         role,
       });
 
@@ -51,13 +39,31 @@ export function LoginForm({ phone, lid, onSuccess }: LoginFormProps) {
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
 
-      try {
-        await api.post('/auth/link-whatsapp', { phone, lid });
-      } catch {
-        // Link may already exist — continue
-      }
+      if (loginToken) {
+        try {
+          const redeemRes = await api.get<{ data: { phone?: string } }>('/auth/redeem-token', {
+            params: { token: loginToken },
+          });
+          const linkedPhone = redeemRes.data?.data?.phone;
+          if (linkedPhone) {
+            try {
+              await api.post('/auth/link-whatsapp', { phone: linkedPhone });
+            } catch {
+              // Link may already exist
+            }
+          }
+        } catch {
+          // Token may already be redeemed
+        }
+      } else if (phone || lid) {
+        try {
+          await api.post('/auth/link-whatsapp', { phone, lid });
+        } catch {
+          // Link may already exist
+        }
       }
 
+      setSuccess(`Logged in successfully as ${user.fullName || user.username}! You can now use WhatsApp commands.`);
       onSuccess();
     } catch (err) {
       const message =
@@ -69,110 +75,83 @@ export function LoginForm({ phone, lid, onSuccess }: LoginFormProps) {
     }
   };
 
+  if (success) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardContent className="pt-6">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <CheckCircle className="h-12 w-12 text-green-500" />
+            <p className="text-sm font-medium text-green-700">{success}</p>
+            <p className="text-xs text-gray-400">
+              Go back to WhatsApp and type <strong>help</strong> to see available commands.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
         <CardTitle className="text-center">Sign In</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="student" onValueChange={(v: string) => setRole(v as 'student' | 'parent')}>
-          <TabsList>
-            <TabsTrigger value="student">Student</TabsTrigger>
-            <TabsTrigger value="parent">Parent</TabsTrigger>
-          </TabsList>
+        <div className="flex gap-2 mb-4">
+          <Button
+            type="button"
+            variant={role === 'student' ? 'default' : 'outline'}
+            className="flex-1"
+            onClick={() => setRole('student')}
+          >
+            Student
+          </Button>
+          <Button
+            type="button"
+            variant={role === 'parent' ? 'default' : 'outline'}
+            className="flex-1"
+            onClick={() => setRole('parent')}
+          >
+            Parent
+          </Button>
+        </div>
 
-          <TabsContent value="student">
-            <FormContent
-              register={register}
-              errors={errors}
-              onSubmit={handleSubmit(onSubmit)}
-              isLoading={isLoading}
-              error={error}
-            />
-          </TabsContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
 
-          <TabsContent value="parent">
-            <FormContent
-              register={register}
-              errors={errors}
-              onSubmit={handleSubmit(onSubmit)}
-              isLoading={isLoading}
-              error={error}
+          <div className="space-y-2">
+            <Label htmlFor="username">Register Number</Label>
+            <Input
+              id="username"
+              placeholder="e.g. 22CSE001"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
             />
-          </TabsContent>
-        </Tabs>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? 'Signing in...' : 'Sign In'}
+          </Button>
+        </form>
       </CardContent>
     </Card>
-  );
-}
-
-async function resolveLinkPhone(loginToken: string, phoneParam: string): Promise<string | null> {
-  if (loginToken) {
-    try {
-      const redeemRes = await api.get<{ data: { phone?: string } }>('/auth/redeem-token', {
-        params: { token: loginToken },
-      });
-      if (redeemRes.data.data?.phone) {
-        return redeemRes.data.data.phone;
-      }
-    } catch (err) {
-      const message =
-        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
-          ?.message;
-      throw new Error(
-        message ||
-          'This login link is invalid or expired. Send "login" in WhatsApp to get a new link.',
-      );
-    }
-  }
-  return phoneParam || null;
-}
-
-interface FormContentProps {
-  register: ReturnType<typeof useForm<LoginFormValues>>['register'];
-  errors: ReturnType<typeof useForm<LoginFormValues>>['formState']['errors'];
-  onSubmit: () => void;
-  isLoading: boolean;
-  error: string | null;
-}
-
-function FormContent({ register, errors, onSubmit, isLoading, error }: FormContentProps) {
-  return (
-    <form onSubmit={onSubmit} className="space-y-4 mt-4">
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <Label htmlFor="username">Username</Label>
-        <Input
-          id="username"
-          placeholder="e.g. 22CSE001"
-          {...register('username')}
-        />
-        {errors.username && (
-          <p className="text-sm text-red-600">{errors.username.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <Input
-          id="password"
-          type="password"
-          placeholder="Enter your password"
-          {...register('password')}
-        />
-        {errors.password && (
-          <p className="text-sm text-red-600">{errors.password.message}</p>
-        )}
-      </div>
-
-      <Button type="submit" className="w-full" isLoading={isLoading}>
-        {isLoading ? 'Signing in...' : 'Sign In'}
-      </Button>
-    </form>
   );
 }
