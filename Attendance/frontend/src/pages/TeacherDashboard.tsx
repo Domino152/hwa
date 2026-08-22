@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { apiService } from "@/services/api";
 import { Send, UserPlus, Trash2, Loader2, Copy, Check } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import type { Student } from "@/types/student.types";
 
 const DEPARTMENTS = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "IT"] as const;
@@ -76,11 +77,10 @@ export function TeacherDashboard() {
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       apiService.post<Student>("/students", data),
-    onSuccess: (response) => {
+    onSuccess: (student) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
-      const student = response.data;
       toast.success(`Student created! Password: ${student.password}`);
-      return response.data;
+      return student;
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -111,9 +111,9 @@ export function TeacherDashboard() {
     };
 
     try {
-      const response = await createMutation.mutateAsync(payload);
+      const student = await createMutation.mutateAsync(payload);
       const newStudent: TeacherStudent = {
-        ...response.data,
+        ...student,
         rollNumber: data.rollNumber,
         whatsappSent: false,
       };

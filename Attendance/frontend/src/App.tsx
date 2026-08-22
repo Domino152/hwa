@@ -10,6 +10,7 @@ const Students = lazy(() => import("@/pages/Students").then((m) => ({ default: m
 const Attendance = lazy(() => import("@/pages/Attendance").then((m) => ({ default: m.Attendance })));
 const AttendanceHistory = lazy(() => import("@/pages/AttendanceHistory").then((m) => ({ default: m.AttendanceHistory })));
 const TeacherDashboard = lazy(() => import("@/pages/TeacherDashboard").then((m) => ({ default: m.TeacherDashboard })));
+const StudentDetail = lazy(() => import("@/pages/StudentDetail").then((m) => ({ default: m.StudentDetail })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +37,7 @@ function App() {
             <Route element={<DashboardLayout />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/students" element={<Students />} />
+              <Route path="/students/:id" element={<StudentDetail />} />
               <Route path="/attendance" element={<Attendance />} />
               <Route path="/history" element={<AttendanceHistory />} />
               <Route path="/teacher" element={<TeacherDashboard />} />

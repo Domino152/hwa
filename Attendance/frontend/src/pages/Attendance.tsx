@@ -78,10 +78,10 @@ export function Attendance() {
 
   const toggleAll = () => {
     const allPresent =
-      students.length > 0 && students.every((s) => attendance[s.studentId] === "present");
+      students.length > 0 && students.every((s) => attendance[s._id] === "present");
     const updated: Record<string, AttendanceStatus> = {};
     students.forEach((s) => {
-      updated[s.studentId] = allPresent ? "absent" : "present";
+      updated[s._id] = allPresent ? "absent" : "present";
     });
     setAttendance(updated);
   };
@@ -89,7 +89,7 @@ export function Attendance() {
   const markAllPresent = () => {
     const updated: Record<string, AttendanceStatus> = {};
     students.forEach((s) => {
-      updated[s.studentId] = "present";
+      updated[s._id] = "present";
     });
     setAttendance(updated);
   };
@@ -97,7 +97,7 @@ export function Attendance() {
   const markAllAbsent = () => {
     const updated: Record<string, AttendanceStatus> = {};
     students.forEach((s) => {
-      updated[s.studentId] = "absent";
+      updated[s._id] = "absent";
     });
     setAttendance(updated);
   };
@@ -153,7 +153,7 @@ export function Attendance() {
   );
   const absentCount = students.length - presentCount - lateCount;
   const allPresent =
-    students.length > 0 && students.every((s) => attendance[s.studentId] === "present");
+    students.length > 0 && students.every((s) => attendance[s._id] === "present");
 
   const isLoading = rosterLoading || dailyLoading;
 
