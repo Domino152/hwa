@@ -25,3 +25,4 @@ export interface StudentFilters {
 export const DEPARTMENTS = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "IT"] as const;
 export const YEARS = [1, 2, 3, 4] as const;
 export const SECTIONS = ["A", "B", "C", "D"] as const;
+export const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8] as const;

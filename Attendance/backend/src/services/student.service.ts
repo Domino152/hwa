@@ -45,7 +45,7 @@ export class StudentService {
     year?: number;
     section?: string;
     search?: string;
-  }): Promise<IStudent[]> {
+  }): Promise<{ data: IStudent[]; total: number; page: number; limit: number; totalPages: number }> {
     const query: Record<string, unknown> = {};
     if (filters.department) query.department = filters.department;
     if (filters.year) query.year = filters.year;
@@ -56,7 +56,9 @@ export class StudentService {
         { registerNumber: { $regex: filters.search, $options: "i" } },
       ];
     }
-    return Student.find(query).sort({ createdAt: -1 });
+    const data = await Student.find(query).sort({ createdAt: -1 });
+    const total = data.length;
+    return { data, total, page: 1, limit: total, totalPages: 1 };
   }
 
   static async getStudentById(id: string): Promise<IStudent> {

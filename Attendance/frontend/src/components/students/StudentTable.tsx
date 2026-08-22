@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -16,6 +17,7 @@ interface StudentTableProps {
 }
 
 export const StudentTable = memo(function StudentTable({ students, isLoading }: StudentTableProps) {
+  const navigate = useNavigate();
   if (isLoading) {
     return (
       <div className="rounded-lg border">
@@ -73,7 +75,7 @@ export const StudentTable = memo(function StudentTable({ students, isLoading }: 
         </TableHeader>
         <TableBody>
           {students.map((student) => (
-            <TableRow key={student._id}>
+            <TableRow key={student._id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/students/${student.registerNumber}`)}>
               <TableCell className="font-mono text-sm">{student.registerNumber}</TableCell>
               <TableCell className="font-medium">{student.fullName}</TableCell>
               <TableCell>
