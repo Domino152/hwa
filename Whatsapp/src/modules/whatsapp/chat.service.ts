@@ -233,7 +233,7 @@ export class ChatService {
       }
     });
 
-    this.sock.ev.on('messages.update', (updates) => {
+    this.sock?.ev.on('messages.update', (updates) => {
       void this.handleMessageUpdates(updates);
     });
 
